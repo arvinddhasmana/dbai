@@ -37,6 +37,9 @@ jobs:
       AI_SEARCH_ENDPOINT: ${{ vars.AI_SEARCH_ENDPOINT || 'globalmart-supply-chain-search' }}
       DBAI_AUTH_MODE: azure-cli
       DATABRICKS_AUTH_TYPE: azure-cli
+      DBAI_APP_NAME: dbai-${{ inputs.environment }}-supply-chain-agent
+      DBAI_APP_USER: ${{ vars.DBAI_APP_USER }}
+      DBAI_BOOTSTRAP_PRINCIPAL: ${{ secrets.AZURE_CLIENT_ID }}
 
     steps:
       - name: Check out repository
@@ -78,7 +81,15 @@ jobs:
 
       - name: Bootstrap data and AI Search
         run: |
+          test -n "$DBAI_APP_USER" || {
+            echo 'DBAI_APP_USER is not configured for this GitHub Environment.' >&2
+            echo 'Run configure_databricks_environment.sh with --app-user <Databricks-user> first.' >&2
+            exit 1
+          }
           python scripts/local/bootstrap_demo_environment.py \
             --target "$DBAI_ENVIRONMENT" \
             --warehouse-id "$DATABRICKS_SQL_WAREHOUSE_ID" \
-            --skip-deploy
+            --skip-deploy \
+            --app-name "$DBAI_APP_NAME" \
+            --user-principal "$DBAI_APP_USER" \
+            --bootstrap-principal "$DBAI_BOOTSTRAP_PRINCIPAL"

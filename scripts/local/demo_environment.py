@@ -82,7 +82,8 @@ def create_search_client():
             except (FileNotFoundError, subprocess.CalledProcessError, KeyError, json.JSONDecodeError) as error:
                 raise RuntimeError(
                     "AI Search requires DATABRICKS_TOKEN or a logged-in Databricks "
-                    "CLI profile. Run `databricks auth login <profile> --host <workspace-url>` "
+                    "CLI profile. Run `databricks auth login --profile <profile> "
+                    "--host <workspace-url>` "
                     "and set DATABRICKS_CONFIG_PROFILE."
                 ) from error
     if not workspace_url:

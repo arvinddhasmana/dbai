@@ -8,6 +8,7 @@ subscription_id="${AZURE_SUBSCRIPTION_ID:-bb2b8549-9693-40f2-9287-3bd5afcc6633}"
 environment_name="${DBAI_ENVIRONMENT:-demo}"
 resource_group="${DBAI_RESOURCE_GROUP:-rg-dbai-${environment_name}}"
 managed_resource_group="${DBAI_MANAGED_RESOURCE_GROUP:-rg-dbai-${environment_name}-managed}"
+workspace_name="${DBAI_WORKSPACE_NAME:-dbai-${environment_name}}"
 warehouse_state_dir="${DBAI_STATE_DIR:-.dbai-state}"
 warehouse_state_file="$warehouse_state_dir/${environment_name}-sql-warehouse-id"
 profile="${DATABRICKS_CONFIG_PROFILE:-dbai-${environment_name}}"
@@ -28,7 +29,7 @@ done
 
 workspace_exists="$(az databricks workspace show \
   --resource-group "$resource_group" \
-  --name "dbai-${environment_name}" \
+  --name "$workspace_name" \
   --subscription "$subscription_id" \
   --query id \
   --output tsv 2>/dev/null || true)"
@@ -36,14 +37,14 @@ workspace_exists="$(az databricks workspace show \
 if [[ -n "$workspace_exists" ]]; then
   workspace_url="$(az databricks workspace show \
     --resource-group "$resource_group" \
-    --name "dbai-${environment_name}" \
+    --name "$workspace_name" \
     --subscription "$subscription_id" \
     --query workspaceUrl \
     --output tsv)"
   export DATABRICKS_CONFIG_PROFILE="$profile"
   export DATABRICKS_HOST="$workspace_url"
   if [[ -z "${DATABRICKS_TOKEN:-}" ]]; then
-    databricks auth login "$profile" --host "$workspace_url"
+    databricks auth login --profile "$profile" --host "$workspace_url"
   fi
   databricks current-user me -p "$profile" --output json >/dev/null
   /opt/az/bin/python3 scripts/local/destroy_demo_environment.py --yes "$@"

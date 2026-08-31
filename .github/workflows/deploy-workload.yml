@@ -46,6 +46,7 @@ jobs:
       MODEL_ENDPOINT: ${{ vars.MODEL_ENDPOINT || 'databricks-llama-4-maverick' }}
       AI_SEARCH_ENDPOINT: ${{ vars.AI_SEARCH_ENDPOINT || 'globalmart-supply-chain-search' }}
       DBAI_AUTH_MODE: azure-cli
+      DATABRICKS_AUTH_TYPE: azure-cli
 
     steps:
       - name: Check out repository
@@ -61,6 +62,17 @@ jobs:
 
       - name: Install Azure Databricks CLI extension
         run: az extension add --name databricks --only-show-errors
+
+      - name: Resolve workspace URL
+        shell: bash
+        run: |
+          workspace_url="$(az databricks workspace show \
+            --resource-group "$DBAI_RESOURCE_GROUP" \
+            --name "$DBAI_WORKSPACE_NAME" \
+            --subscription "$AZURE_SUBSCRIPTION_ID" \
+            --query workspaceUrl \
+            --output tsv)"
+          echo "DATABRICKS_HOST=https://${workspace_url#https://}" >> "$GITHUB_ENV"
 
       - name: Install Databricks CLI
         uses: databricks/setup-cli@main

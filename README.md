@@ -99,6 +99,7 @@ Set the target profile and SQL Warehouse ID:
 export DATABRICKS_CONFIG_PROFILE=<profile>
 export DATABRICKS_SQL_WAREHOUSE_ID=<warehouse-id>
 export DBAI_CATALOG=<catalog-name>
+export DBAI_APP_USER=<databricks-username>
 ```
 
 Validate and deploy the Bundle:
@@ -113,10 +114,13 @@ databricks bundle deploy -t dev \
 Bootstrap the data-plane resources:
 
 ```bash
+scripts/local/deploy_workload.sh
 python3 scripts/local/bootstrap_demo_environment.py \
   --target dev \
   --warehouse-id "$DATABRICKS_SQL_WAREHOUSE_ID" \
-  --skip-deploy
+  --skip-deploy \
+  --app-name dbai-dev-supply-chain-agent \
+  --user-principal "$DBAI_APP_USER"
 ```
 
 Bootstrap creates or updates the structured tables, contract chunk source, AI Search endpoint and index, and Genie-facing SQL function. The triggered AI Search index requires a manual sync after the contract refresh completes.
@@ -187,25 +191,79 @@ The script configures these GitHub Environment settings:
   `DBAI_RESOURCE_GROUP`, `DBAI_MANAGED_RESOURCE_GROUP`, and
   `DBAI_WORKSPACE_NAME`
 - Optional **Actions variables** `DBAI_CATALOG`,
-  `DATABRICKS_SQL_WAREHOUSE_ID`, `MODEL_ENDPOINT`, and `AI_SEARCH_ENDPOINT`
+  `DATABRICKS_SQL_WAREHOUSE_ID`, `DBAI_APP_USER`, `MODEL_ENDPOINT`, and
+  `AI_SEARCH_ENDPOINT`
 
-Configure data-plane values separately in the `dev`, `test`, and `prod` GitHub
-Environments. The default resource names are `rg-dbai-<environment>` and
-`dbai-<environment>`, so those variables can be omitted when using the Bicep
-defaults. `DBAI_CATALOG` and `DATABRICKS_SQL_WAREHOUSE_ID` are required for
-workload deployment and bootstrap.
+After the workspace is deployed, an authorized Databricks account and workspace
+administrator must configure each environment. Log in an account-admin profile
+and a workspace-admin profile, then run:
 
-Azure `Contributor` does not grant Databricks data-plane permissions. Grant the
-service principal workspace access and the required Unity Catalog, SQL
-Warehouse, model-serving, AI Search, job, and App permissions in each workspace.
+```bash
+databricks auth login \
+  --profile account-admin \
+  --host https://accounts.azuredatabricks.net \
+  --account-id <databricks-account-id> \
+  --skip-workspace
+databricks auth login --profile dbai-dev-admin --host https://<workspace-url>
+scripts/local/configure_databricks_environment.sh \
+  --environment dev \
+  --repo arvinddhasmana/dbai \
+  --subscription-id <subscription-id> \
+  --deployment-client-id <azure-client-id> \
+  --account-profile account-admin \
+  --workspace-profile dbai-dev-admin
+```
+
+Use a separate profile such as `dbai-test-admin` or `dbai-prod-admin` for the
+other workspaces. Repeat for `test` and `prod`. The script discovers the
+workspace-specific isolated catalog, creates or reuses the environment SQL
+Warehouse, grants the deployment service principal the required prerequisites,
+and writes `DBAI_CATALOG`, `DATABRICKS_SQL_WAREHOUSE_ID`, and `DBAI_APP_USER` to
+only the selected GitHub Environment. Use `--app-user` when the administrator
+running setup is not the person who will use the App. Use `--catalog` or
+`--warehouse-id` to reuse named resources.
+The Databricks account ID is shown in the Databricks account console under
+account settings. It is not the Azure subscription ID or the workspace ID.
+
+The default resource names are `rg-dbai-<environment>` and `dbai-<environment>`,
+so those variables can be omitted when using the Bicep defaults.
+`DBAI_CATALOG`, `DATABRICKS_SQL_WAREHOUSE_ID`, and `DBAI_APP_USER` are required
+for the complete workload and bootstrap path.
+
+Azure `Contributor` does not grant Databricks data-plane permissions. The
+manual environment script grants workspace access, SQL Warehouse access, and
+catalog/schema prerequisites in the selected workspace. Bootstrap preflights
+existing ingestion tables with `SELECT` and `MODIFY` for the job identity, then grants
+the configured App user and App service principal access to the Gold tables,
+search index table, search function, and AI Search endpoint. Bundle-created jobs
+and the App are owned by the deployment identity.
 
 `Deploy Infrastructure` runs `scripts/local/deploy_infrastructure.sh`.
 `Deploy Workload` logs in with `azure/login`, sets `DBAI_AUTH_MODE=azure-cli`,
-and runs `scripts/local/deploy_workload.sh` against the existing workspace.
+and runs `scripts/local/deploy_workload.sh` against the existing workspace. The
+workload script deploys the complete `app/` directory as an App revision after
+the Bundle resources are updated; do not select an individual Python file.
 `Bootstrap Environment` uses the same OIDC session to run
-`scripts/local/bootstrap_demo_environment.py`. The AI Search helper obtains its
-bearer token from the non-interactive Azure CLI session. No long-lived
-credential is stored in the repository.
+`scripts/local/bootstrap_demo_environment.py`. It grants the configured
+`DBAI_APP_USER` and App service principal after the data objects exist. The AI
+Search helper obtains its bearer token from the non-interactive Azure CLI
+session. No long-lived credential is stored in the repository.
+
+The first-time order is **Deploy Infrastructure**, manual
+`configure_databricks_environment.sh`, **Deploy Workload**, and then
+**Bootstrap Environment**. Bootstrap uses `--skip-deploy`, so the workload must
+already be deployed.
+
+If an App was created before App revision deployment was added, deploy the
+Bundle-uploaded `app/` directory manually. From the workspace path shown by
+`databricks bundle summary -t dev`, run:
+
+```bash
+databricks apps deploy dbai-dev-supply-chain-agent \
+  --source-code-path /Workspace/Users/<deployment-user>/.bundle/dbai/dev/files/app \
+  --skip-validation \
+  --auto-approve
+```
 
 Keep the federated credential subject restricted to the intended GitHub
 Environment. Required reviewers can be enabled for `test` or `prod` as an
@@ -220,6 +278,7 @@ Create a Genie space over:
 - `<catalog>.<schema>.dim_products`
 - `<catalog>.<schema>.dim_vendors`
 - `<catalog>.<schema>.fact_inventory_status`
+- `<catalog>.<schema>.vendor_contract_chunks_index_rebuilt`
 - `<catalog>.<schema>.search_vendor_contracts`, when contract questions are enabled
 
 Useful Genie questions:

@@ -4,6 +4,11 @@ set -euo pipefail
 REPOSITORY_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$REPOSITORY_ROOT"
 
+if ! command -v jq >/dev/null 2>&1; then
+  printf '%s\n' 'The jq command is required to locate the Bundle-uploaded App source.' >&2
+  exit 1
+fi
+
 environment_name="${DBAI_ENVIRONMENT:-dev}"
 target="${DBAI_BUNDLE_TARGET:-$environment_name}"
 subscription_id="${AZURE_SUBSCRIPTION_ID:-}"
@@ -15,20 +20,25 @@ warehouse_id="${DATABRICKS_SQL_WAREHOUSE_ID:?Set DATABRICKS_SQL_WAREHOUSE_ID to 
 auth_mode="${DBAI_AUTH_MODE:-azure-cli}"
 
 if [[ -z "$workspace_host" ]]; then
-  if [[ -z "$subscription_id" ]]; then
-    printf '%s\n' 'Set DATABRICKS_HOST or AZURE_SUBSCRIPTION_ID so the workspace URL can be resolved.' >&2
+  if [[ -n "$subscription_id" ]]; then
+    if ! az extension show --name databricks --only-show-errors >/dev/null 2>&1; then
+      az extension add --name databricks --only-show-errors
+    fi
+    workspace_url="$(az databricks workspace show \
+      --resource-group "$resource_group" \
+      --name "$workspace_name" \
+      --subscription "$subscription_id" \
+      --query workspaceUrl \
+      --output tsv)"
+    workspace_host="https://${workspace_url#https://}"
+  elif [[ -n "${DATABRICKS_CONFIG_PROFILE:-}" ]]; then
+    workspace_host="$(databricks auth describe \
+      --profile "$DATABRICKS_CONFIG_PROFILE" \
+      --output json | jq -r '.details.host // empty')"
+  else
+    printf '%s\n' 'Set DATABRICKS_HOST, DATABRICKS_CONFIG_PROFILE, or AZURE_SUBSCRIPTION_ID so the workspace URL can be resolved.' >&2
     exit 1
   fi
-  if ! az extension show --name databricks --only-show-errors >/dev/null 2>&1; then
-    az extension add --name databricks --only-show-errors
-  fi
-  workspace_url="$(az databricks workspace show \
-    --resource-group "$resource_group" \
-    --name "$workspace_name" \
-    --subscription "$subscription_id" \
-    --query workspaceUrl \
-    --output tsv)"
-  workspace_host="https://${workspace_url#https://}"
 fi
 
 export DATABRICKS_HOST="$workspace_host"
@@ -60,10 +70,59 @@ esac
 
 databricks current-user me --output json >/dev/null
 databricks bundle validate -t "$target"
-databricks bundle deploy -t "$target" \
-  --var="sql_warehouse_id=${warehouse_id}" \
-  --var="catalog=${catalog_name}" \
-  --var="model_endpoint=${MODEL_ENDPOINT:-databricks-llama-4-maverick}" \
-  --var="ai_search_endpoint=${AI_SEARCH_ENDPOINT:-globalmart-supply-chain-search}"
+bundle_deploy_args=(
+  bundle deploy
+  -t "$target"
+  "--var=sql_warehouse_id=${warehouse_id}"
+  "--var=catalog=${catalog_name}"
+  "--var=model_endpoint=${MODEL_ENDPOINT:-databricks-llama-4-maverick}"
+  "--var=ai_search_endpoint=${AI_SEARCH_ENDPOINT:-globalmart-supply-chain-search}"
+)
+if ! databricks "${bundle_deploy_args[@]}"; then
+  existing_app_name="dbai-${target}-supply-chain-agent"
+  if databricks apps get "$existing_app_name" --output json >/dev/null 2>&1; then
+    printf 'Binding existing App after Bundle state recovery: %s\n' "$existing_app_name"
+    databricks bundle deployment bind supply_chain_agent "$existing_app_name" \
+      -t "$target" \
+      --auto-approve
+    databricks "${bundle_deploy_args[@]}"
+  else
+    exit 1
+  fi
+fi
 
-printf 'Workload deployed. Bundle target: %s\n' "$target"
+bundle_summary="$(databricks bundle summary -t "$target" --output json)"
+app_name="$(jq -r '.resources.apps.supply_chain_agent.name // empty' <<< "$bundle_summary")"
+app_source_path="$(jq -r '.resources.apps.supply_chain_agent.source_code_path // empty' <<< "$bundle_summary")"
+if [[ -z "$app_name" || -z "$app_source_path" ]]; then
+  printf '%s\n' 'Bundle summary did not contain the supply_chain_agent App name and Workspace Files source path.' >&2
+  exit 1
+fi
+
+app_config_file="$(mktemp)"
+trap 'rm -f "$app_config_file"' EXIT
+printf '%s\n' \
+  'command: ["uv", "run", "start-server"]' \
+  'env:' \
+  '  - name: MLFLOW_TRACKING_URI' \
+  '    value: "databricks"' \
+  '  - name: MLFLOW_REGISTRY_URI' \
+  '    value: "databricks-uc"' \
+  '  - name: MODEL_ENDPOINT' \
+  "    value: \"${MODEL_ENDPOINT:-databricks-llama-4-maverick}\"" \
+  '  - name: DATABRICKS_SQL_WAREHOUSE_ID' \
+  "    value: \"${warehouse_id}\"" \
+  '  - name: DBAI_CATALOG' \
+  "    value: \"${catalog_name}\"" > "$app_config_file"
+databricks workspace import "$app_source_path/app.yaml" \
+  --file "$app_config_file" \
+  --format AUTO \
+  --overwrite \
+  --output text >/dev/null
+
+databricks apps deploy "$app_name" \
+  --source-code-path "$app_source_path" \
+  --skip-validation \
+  --auto-approve
+
+printf 'Workload and App deployed. Bundle target: %s\n' "$target"

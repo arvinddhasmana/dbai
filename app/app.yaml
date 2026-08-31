@@ -5,9 +5,3 @@ env:
     value: "databricks"
   - name: MLFLOW_REGISTRY_URI
     value: "databricks-uc"
-  - name: MODEL_ENDPOINT
-    value: "databricks-llama-4-maverick"
-  - name: DATABRICKS_SQL_WAREHOUSE_ID
-    value: "7592c8561cd4a302"
-  - name: DBAI_CATALOG
-    value: "dbai_demo_7405607560882227"

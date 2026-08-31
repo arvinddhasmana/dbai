@@ -137,17 +137,24 @@ if [[ -z "$warehouse_id" ]]; then
 fi
 
 export DATABRICKS_SQL_WAREHOUSE_ID="$warehouse_id"
-databricks bundle validate -t dev
-databricks bundle deploy -t dev \
-  --var="sql_warehouse_id=${warehouse_id}" \
-  --var="catalog=${catalog_name}"
-
 export MODEL_ENDPOINT="${MODEL_ENDPOINT:-databricks-llama-4-maverick}"
 export AI_SEARCH_ENDPOINT="${AI_SEARCH_ENDPOINT:-globalmart-supply-chain-search}"
+export DBAI_BUNDLE_TARGET="${DBAI_BUNDLE_TARGET:-dev}"
+export DBAI_APP_NAME="${DBAI_APP_NAME:-dbai-${DBAI_BUNDLE_TARGET}-supply-chain-agent}"
+if [[ -z "${DBAI_APP_USER:-}" ]]; then
+  DBAI_APP_USER="$(databricks current-user me -p "$profile" -o json | python3 -c \
+    'import json, sys; user = json.load(sys.stdin); print(user.get("userName") or user.get("user_name") or "")')"
+  export DBAI_APP_USER
+fi
+
+scripts/local/deploy_workload.sh
 "$python_bin" scripts/local/bootstrap_demo_environment.py \
-  --target dev \
+  --target "$DBAI_BUNDLE_TARGET" \
   --warehouse-id "$warehouse_id" \
-  --skip-deploy
+  --skip-deploy \
+  --app-name "$DBAI_APP_NAME" \
+  --user-principal "$DBAI_APP_USER" \
+  --bootstrap-principal "$DBAI_APP_USER"
 
 printf '\nDeployment complete. Workspace: %s\n' "$workspace_url"
 printf 'SQL warehouse: %s\n' "$warehouse_id"

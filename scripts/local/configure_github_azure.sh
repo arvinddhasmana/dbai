@@ -20,9 +20,9 @@ Options:
   --help                  Show this help
 
 Optional per-environment variables are read from the shell:
-  DBAI_CATALOG_DEV, DATABRICKS_SQL_WAREHOUSE_ID_DEV
-  DBAI_CATALOG_TEST, DATABRICKS_SQL_WAREHOUSE_ID_TEST
-  DBAI_CATALOG_PROD, DATABRICKS_SQL_WAREHOUSE_ID_PROD
+  DBAI_CATALOG_DEV, DATABRICKS_SQL_WAREHOUSE_ID_DEV, DBAI_APP_USER_DEV
+  DBAI_CATALOG_TEST, DATABRICKS_SQL_WAREHOUSE_ID_TEST, DBAI_APP_USER_TEST
+  DBAI_CATALOG_PROD, DATABRICKS_SQL_WAREHOUSE_ID_PROD, DBAI_APP_USER_PROD
 EOF
 }
 
@@ -192,13 +192,18 @@ for environment in "${environments[@]}"; do
 
   catalog_variable="DBAI_CATALOG_${environment^^}"
   warehouse_variable="DATABRICKS_SQL_WAREHOUSE_ID_${environment^^}"
+  app_user_variable="DBAI_APP_USER_${environment^^}"
   catalog_value="${!catalog_variable:-}"
   warehouse_value="${!warehouse_variable:-}"
+  app_user_value="${!app_user_variable:-}"
   if [[ -n "$catalog_value" ]]; then
     gh variable set DBAI_CATALOG --repo "$repo" --env "$environment" --body "$catalog_value"
   fi
   if [[ -n "$warehouse_value" ]]; then
     gh variable set DATABRICKS_SQL_WAREHOUSE_ID --repo "$repo" --env "$environment" --body "$warehouse_value"
+  fi
+  if [[ -n "$app_user_value" ]]; then
+    gh variable set DBAI_APP_USER --repo "$repo" --env "$environment" --body "$app_user_value"
   fi
 
   printf 'Configured GitHub Environment: %s\n' "$environment"
@@ -207,4 +212,4 @@ done
 printf '\nConfiguration complete for %s.\n' "$repo"
 printf 'Client ID: %s\n' "$app_id"
 printf 'Tenant ID: %s\n' "$tenant_id"
-printf 'Set DBAI_CATALOG_<ENV> and DATABRICKS_SQL_WAREHOUSE_ID_<ENV> before workload/bootstrap runs if they were not supplied.\n'
+printf 'Set DBAI_CATALOG_<ENV>, DATABRICKS_SQL_WAREHOUSE_ID_<ENV>, and DBAI_APP_USER_<ENV> before workload/bootstrap runs if they were not supplied.\n'

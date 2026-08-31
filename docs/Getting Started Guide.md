@@ -10,7 +10,9 @@ Search endpoint and index, and Genie function. It does not trigger the
 
 The deployment script discovers the workspace-specific isolated Unity Catalog
 created by Azure Databricks and stores its name in `.dbai-state/`. Set
-`DBAI_CATALOG` only when you need to override that catalog.
+`DBAI_CATALOG` only when you need to override that catalog. Set
+`DBAI_APP_USER` to the Databricks username that will use the App; the admin
+setup script discovers the current workspace profile user when it is omitted.
 
 For browserless deployment, authenticate Azure CLI first and select its unified
 authentication mode:
@@ -43,10 +45,11 @@ The repository has three independent workflows:
 | **Deploy Workload** | Automatically for workload changes on `main`, or manually | Deploys the Databricks App and Bundle-managed jobs to an existing workspace |
 | **Bootstrap Environment** | Once after infrastructure/workload setup, or when demo data/contracts change | Creates catalog objects, loads sample data, refreshes contract chunks, creates AI Search and the Genie function |
 
-The normal SDLC path is **Deploy Infrastructure** once, followed by
-**Bootstrap Environment** once, then **Deploy Workload** for application
-releases. Workload deployment does not run Bicep or reload data. The triggered AI
-Search index still requires an explicit manual synchronization after contract
+The normal SDLC path is **Deploy Infrastructure** once, followed by the manual
+Databricks environment configuration, **Deploy Workload** once, and then
+**Bootstrap Environment** once. Later application releases use **Deploy
+Workload**. Workload deployment does not run Bicep or reload data. The triggered
+AI Search index still requires an explicit manual synchronization after contract
 refresh.
 
 #### One-time administrator setup
@@ -108,6 +111,48 @@ Warehouse are Databricks data-plane resources. Set them in the corresponding
 GitHub Environment before running **Deploy Workload** or **Bootstrap
 Environment**.
 
+#### Configure one Databricks environment
+
+After **Deploy Infrastructure** completes, an authorized Databricks account and
+workspace administrator must run the environment configuration script. The
+account-admin profile registers and assigns the deployment service principal;
+the workspace-admin profile grants workspace, Unity Catalog, warehouse, and
+available endpoint permissions.
+
+First authenticate both profiles in the administrator's terminal. The account
+profile uses the Databricks account console host, while the workspace profile
+uses the deployed workspace host:
+
+```bash
+databricks auth login --profile account-admin \
+    --host https://accounts.azuredatabricks.net \
+    --account-id <databricks-account-id> \
+    --skip-workspace
+databricks auth login --profile dbai-dev-admin \
+    --host https://<workspace-url>
+```
+
+Then configure one environment:
+
+```bash
+scripts/local/configure_databricks_environment.sh \
+    --environment dev \
+    --repo arvinddhasmana/dbai \
+    --subscription-id <subscription-id> \
+    --deployment-client-id <azure-client-id> \
+    --account-profile account-admin \
+    --workspace-profile dbai-dev-admin
+```
+
+Use separate profiles such as `dbai-test-admin` and `dbai-prod-admin` for the
+other workspaces. Repeat with `--environment test` and `--environment prod` as
+those workspaces are approved. The script discovers the isolated catalog, creates or reuses the
+environment SQL Warehouse, grants the deployment service principal the required
+prerequisites, and writes `DBAI_CATALOG`, `DATABRICKS_SQL_WAREHOUSE_ID`, and
+`DBAI_APP_USER` to only the selected GitHub Environment. Use `--app-user` when
+the administrator running setup is not the App user. Use `--catalog` or
+`--warehouse-id` when existing resources must be reused.
+
 #### Configure Databricks access
 
 Azure `Contributor` does not grant Databricks data-plane access. A Databricks
@@ -121,19 +166,35 @@ workspace administrator must grant the service principal:
 
 The service principal must also be able to run the Bundle-managed jobs. Confirm
 these permissions in each workspace before using **Bootstrap Environment**.
+Bootstrap preflights existing ingestion tables with `SELECT` and `MODIFY` for
+the identity that runs the Bundle jobs, then grants the configured App user and
+App service principal object-level permissions after the tables, search index
+table, and function exist. Because the App uses on-behalf-of SQL authorization,
+each App user needs `USE CATALOG`,
+`USE SCHEMA`, `CAN USE` on the SQL Warehouse, `SELECT` on the three Gold tables
+and `vendor_contract_chunks_index_rebuilt`, and `EXECUTE` on
+`search_vendor_contracts`.
 
 #### Run the automated workflows
 
 1. In **Actions**, run **Deploy Infrastructure** for `dev`, then repeat for
     `test` and `prod` as those environments are approved. This creates only
     Azure infrastructure.
-2. Create or identify the catalog and SQL Warehouse in each workspace, then
-    set `DBAI_CATALOG` and `DATABRICKS_SQL_WAREHOUSE_ID` as Environment
-    variables. The workflows do not copy these values between environments.
-3. Run **Bootstrap Environment** for the selected environment. Wait for the
+2. Run `scripts/local/configure_databricks_environment.sh` for the selected
+    environment as an authorized Databricks administrator. It creates or
+    discovers the catalog and SQL Warehouse, grants prerequisites, records the
+    App user, and sets the GitHub Environment variables. The script does not
+    copy values between
+    environments.
+3. Run **Deploy Workload** manually for the selected environment. This must
+    happen before bootstrap because the bootstrap workflow uses `--skip-deploy`.
+    This deploys the complete `app/` directory as an App revision; do not
+    choose an individual Python source file.
+4. Run **Bootstrap Environment** for the selected environment. Wait for the
     refresh job to finish, then manually trigger the `TRIGGERED` AI Search index
-    synchronization and wait for **Online** and **Completed** status.
-4. Push changes under `app/**`, `resources/**`, `scripts/deployable/**`, or
+    synchronization and wait for **Online** and **Completed** status. Bootstrap
+    grants App and user data permissions after object creation.
+5. Push changes under `app/**`, `resources/**`, `scripts/deployable/**`, or
     `databricks.yml` to `main` for automatic **Deploy Workload**, or run it
     manually for `dev`, `test`, or `prod`.
 
@@ -182,7 +243,7 @@ second should return your Databricks user details. If either command fails,
 repeat the VS Code login steps or run this terminal fallback:
 
 ```bash
-databricks auth login aiarchitect \
+databricks auth login --profile aiarchitect \
     --host https://adb-7405616725207770.10.azuredatabricks.net
 export DATABRICKS_CONFIG_PROFILE=aiarchitect
 ```
@@ -252,10 +313,13 @@ data-plane cleanup fails. It deletes the SQL warehouse only when this
 deployment created and recorded it. The existing `rgdata` resource group is
 never targeted.
 
-Run the complete bootstrap from the repository root:
+Run the complete bootstrap from the repository root. The command below assumes
+the App was deployed first and grants both the App identity and forwarded user:
 
 ```bash
-/opt/az/bin/python3 scripts/local/bootstrap_demo_environment.py
+/opt/az/bin/python3 scripts/local/bootstrap_demo_environment.py \
+    --app-name dbai-dev-supply-chain-agent \
+    --user-principal "$DBAI_APP_USER"
 ```
 
 Bootstrap is idempotent. It deploys the bundle, recreates the structured demo
@@ -308,7 +372,8 @@ Open the app URL shown by the Databricks Apps page. Each request uses the
 signed-in user's authorization for SQL. The app requests the `sql` and
 `model-serving` user scopes, so users must consent when prompted. Grant users
 `CAN USE` on the SQL warehouse and the required Unity Catalog privileges on
-the three Gold tables and `search_vendor_contracts`.
+the three Gold tables, the `vendor_contract_chunks_index_rebuilt` table, and
+`search_vendor_contracts`.
 
 This makes the app suitable for the RBAC demonstration: Unity Catalog table
 permissions, row filters, and column masks are evaluated for the current user.

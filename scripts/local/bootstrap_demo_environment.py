@@ -20,6 +20,7 @@ from demo_environment import (
     execute_sql_file,
     upload_baseline_files,
 )
+from grant_data_access import grant_bootstrap_modify, grant_data_access
 from validate_demo_workspace import validate_workspace
 
 
@@ -50,6 +51,22 @@ def parse_args():
     parser.add_argument(
         "--skip-genie", action="store_true", help="Do not create the Genie-facing SQL function."
     )
+    parser.add_argument(
+        "--app-name",
+        default=os.getenv("DBAI_APP_NAME"),
+        help="Deployed Databricks App to grant access after bootstrap.",
+    )
+    parser.add_argument(
+        "--user-principal",
+        default=os.getenv("DBAI_APP_USER"),
+        help="Databricks user to grant access for App on-behalf-of requests.",
+    )
+    parser.add_argument(
+        "--bootstrap-principal",
+        action="append",
+        default=[],
+        help="Identity that runs overwrite-based bootstrap jobs; may be repeated.",
+    )
     return parser.parse_args()
 
 
@@ -70,6 +87,23 @@ def main():
         args.warehouse_id,
     )
 
+    current_user = workspace.current_user.me()
+    current_principal = getattr(current_user, "user_name", None)
+    if not current_principal:
+        current_principal = getattr(current_user, "userName", None)
+    bootstrap_principals = list(args.bootstrap_principal)
+    if args.user_principal and not bootstrap_principals:
+        bootstrap_principals.append(args.user_principal)
+    if current_principal and current_principal not in bootstrap_principals:
+        bootstrap_principals.append(current_principal)
+    if bootstrap_principals:
+        grant_bootstrap_modify(
+            workspace,
+            CATALOG,
+            bootstrap_principals,
+            args.warehouse_id,
+        )
+
     if not args.skip_deploy:
         run_command(["deploy"], args.target)
     run_command(["run", "generate_mock_data"], args.target)
@@ -86,6 +120,20 @@ def main():
     if not args.skip_genie:
         execute_sql_file(workspace, GENIE_SQL, args.warehouse_id)
         print("Genie function and table metadata created.")
+
+    if args.app_name or args.user_principal:
+        if not args.app_name or not args.user_principal:
+            raise SystemExit(
+                "Pass both --app-name and --user-principal to configure App access."
+            )
+        grant_data_access(
+            args.app_name,
+            args.user_principal,
+            CATALOG,
+            args.warehouse_id,
+            ENDPOINT_NAME,
+            client=workspace,
+        )
 
     print("Bootstrap complete. The TRIGGERED AI Search index still requires a manual sync.")
 
