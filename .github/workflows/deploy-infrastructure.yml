@@ -1,0 +1,50 @@
+name: Deploy Infrastructure
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Environment to provision
+        required: true
+        type: choice
+        options:
+          - dev
+          - test
+          - prod
+        default: dev
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: dbai-infrastructure-${{ inputs.environment }}
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Provision Azure Databricks infrastructure
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    env:
+      AZURE_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      AZURE_LOCATION: ${{ vars.AZURE_LOCATION || 'eastus2' }}
+      DBAI_ENVIRONMENT: ${{ inputs.environment }}
+      DBAI_RESOURCE_GROUP: ${{ vars.DBAI_RESOURCE_GROUP }}
+      DBAI_MANAGED_RESOURCE_GROUP: ${{ vars.DBAI_MANAGED_RESOURCE_GROUP }}
+      DBAI_WORKSPACE_NAME: ${{ vars.DBAI_WORKSPACE_NAME }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Log in to Azure with OIDC
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+          auth-type: SERVICE_PRINCIPAL
+
+      - name: Deploy Azure infrastructure
+        run: scripts/local/deploy_infrastructure.sh

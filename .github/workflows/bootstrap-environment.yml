@@ -1,0 +1,84 @@
+name: Bootstrap Environment
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Environment to initialize
+        required: true
+        type: choice
+        options:
+          - dev
+          - test
+          - prod
+        default: dev
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: dbai-bootstrap-${{ inputs.environment }}
+  cancel-in-progress: false
+
+jobs:
+  bootstrap:
+    name: Initialize Databricks data and search
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    env:
+      AZURE_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      DBAI_ENVIRONMENT: ${{ inputs.environment }}
+      DBAI_RESOURCE_GROUP: ${{ vars.DBAI_RESOURCE_GROUP }}
+      DBAI_WORKSPACE_NAME: ${{ vars.DBAI_WORKSPACE_NAME }}
+      DBAI_CATALOG: ${{ vars.DBAI_CATALOG }}
+      DATABRICKS_SQL_WAREHOUSE_ID: ${{ vars.DATABRICKS_SQL_WAREHOUSE_ID }}
+      MODEL_ENDPOINT: ${{ vars.MODEL_ENDPOINT || 'databricks-llama-4-maverick' }}
+      AI_SEARCH_ENDPOINT: ${{ vars.AI_SEARCH_ENDPOINT || 'globalmart-supply-chain-search' }}
+      DBAI_AUTH_MODE: azure-cli
+      DATABRICKS_AUTH_TYPE: azure-cli
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Log in to Azure with OIDC
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+          auth-type: SERVICE_PRINCIPAL
+
+      - name: Install Azure Databricks CLI extension
+        run: az extension add --name databricks --only-show-errors
+
+      - name: Resolve workspace URL
+        shell: bash
+        run: |
+          workspace_url="$(az databricks workspace show \
+            --resource-group "$DBAI_RESOURCE_GROUP" \
+            --name "$DBAI_WORKSPACE_NAME" \
+            --subscription "$AZURE_SUBSCRIPTION_ID" \
+            --query workspaceUrl \
+            --output tsv)"
+          echo "DATABRICKS_HOST=https://${workspace_url#https://}" >> "$GITHUB_ENV"
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - name: Install Python dependencies
+        run: python -m pip install --requirement requirements-dev.txt
+
+      - name: Install Databricks CLI
+        uses: databricks/setup-cli@main
+
+      - name: Bootstrap data and AI Search
+        run: |
+          python scripts/local/bootstrap_demo_environment.py \
+            --target "$DBAI_ENVIRONMENT" \
+            --warehouse-id "$DATABRICKS_SQL_WAREHOUSE_ID" \
+            --skip-deploy

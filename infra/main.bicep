@@ -14,6 +14,9 @@ param resourceGroupName string = 'rg-dbai-${environmentName}'
 @description('Resource group used only for Azure Databricks managed resources.')
 param managedResourceGroupName string = 'rg-dbai-${environmentName}-managed'
 
+@description('Azure Databricks workspace name.')
+param workspaceName string = 'dbai-${environmentName}'
+
 var tags = {
   Application: 'dbai'
   Environment: environmentName
@@ -31,7 +34,7 @@ module databricksWorkspace 'br/public:avm/res/databricks/workspace:0.12.0' = {
   name: 'databricksWorkspace-${environmentName}'
   scope: demoResourceGroup
   params: {
-    name: 'dbai-${environmentName}'
+    name: workspaceName
     location: location
     skuName: 'premium'
     defaultCatalog: {

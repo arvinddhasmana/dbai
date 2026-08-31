@@ -1,0 +1,69 @@
+name: Deploy Workload
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - app/**
+      - databricks.yml
+      - resources/**
+      - scripts/deployable/**
+      - scripts/local/deploy_workload.sh
+      - .github/workflows/deploy-workload.yml
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Environment to deploy
+        required: true
+        type: choice
+        options:
+          - dev
+          - test
+          - prod
+        default: dev
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: dbai-workload-${{ inputs.environment || 'dev' }}
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy Databricks workload
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment || 'dev' }}
+    env:
+      AZURE_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      DBAI_ENVIRONMENT: ${{ inputs.environment || 'dev' }}
+      DBAI_RESOURCE_GROUP: ${{ vars.DBAI_RESOURCE_GROUP }}
+      DBAI_WORKSPACE_NAME: ${{ vars.DBAI_WORKSPACE_NAME }}
+      DBAI_CATALOG: ${{ vars.DBAI_CATALOG }}
+      DATABRICKS_SQL_WAREHOUSE_ID: ${{ vars.DATABRICKS_SQL_WAREHOUSE_ID }}
+      MODEL_ENDPOINT: ${{ vars.MODEL_ENDPOINT || 'databricks-llama-4-maverick' }}
+      AI_SEARCH_ENDPOINT: ${{ vars.AI_SEARCH_ENDPOINT || 'globalmart-supply-chain-search' }}
+      DBAI_AUTH_MODE: azure-cli
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Log in to Azure with OIDC
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+          auth-type: SERVICE_PRINCIPAL
+
+      - name: Install Azure Databricks CLI extension
+        run: az extension add --name databricks --only-show-errors
+
+      - name: Install Databricks CLI
+        uses: databricks/setup-cli@main
+
+      - name: Deploy Bundle workload
+        run: scripts/local/deploy_workload.sh

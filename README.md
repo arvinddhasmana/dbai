@@ -1,0 +1,292 @@
+# GlobalMart Supply Chain Agents
+
+A Databricks demonstration that combines structured inventory analytics, vendor-contract retrieval, Databricks Genie, and a Mosaic AI Agent hosted in a Databricks App.
+
+The project supports two agent experiences over the same governed Unity Catalog data:
+
+- **Databricks Genie**: SQL-first business exploration over inventory and vendor tables, with a Genie-facing SQL function for contract retrieval.
+- **Mosaic AI Agent in a Databricks App**: A custom conversational UI that grounds answers in governed inventory queries and active AI Search contract evidence.
+
+## What This Demonstrates
+
+| Capability | Databricks service | Example |
+| --- | --- | --- |
+| Natural-language structured analytics | Genie and Databricks SQL | Calculate delayed inventory value by account manager |
+| Contract RAG | Databricks AI Search | Retrieve weather exceptions, penalties, liability, and service levels |
+| Custom agent experience | Mosaic AI Agent Framework and Databricks Apps | Ask mixed inventory and contract questions in a branded chat UI |
+| Governed data foundation | Unity Catalog and SQL Warehouse | Catalog tables, permissions, row filters, and column masks |
+| Repeatable deployment | Databricks Asset Bundles | Deploy the App and serverless data jobs |
+
+## Architecture
+
+```mermaid
+flowchart LR
+    User[Operations or procurement user]
+    Genie[Databricks Genie]
+    App[Databricks App]
+    Agent[Mosaic AI Agent]
+    SQL[SQL Warehouse]
+    Tables[(Unity Catalog Gold tables)]
+    Volume[(Unity Catalog Volume)]
+    Refresh[Contract refresh job]
+    Source[(Contract chunk Delta table)]
+    Search[AI Search index]
+    Model[Model Serving endpoint]
+
+    User --> Genie
+    User --> App
+    App --> Agent
+    Genie --> SQL
+    Agent --> SQL
+    SQL --> Tables
+    Agent --> Search
+    Volume --> Refresh --> Source --> Search
+    Agent --> Model
+    Genie -. search_vendor_contracts function .-> Search
+```
+
+### Shared data foundation
+
+Structured demo data is stored in:
+
+- `dim_products`
+- `dim_vendors`
+- `fact_inventory_status`
+
+Contracts are uploaded to the Unity Catalog Volume, parsed into
+`vendor_contract_chunks_index_source`, and synchronized to the triggered AI Search index `vendor_contract_chunks_index_rebuilt`.
+
+The default catalog and schema are `globalmart.supply_chain`. Disposable deployments use an isolated catalog such as `dbai_demo_<workspace-id>`.
+
+## Repository Layout
+
+```text
+app/                  Mosaic AI Agent and Databricks App UI
+scripts/local/        Local control-plane, bootstrap, validation, and teardown scripts
+scripts/deployable/   Databricks serverless notebook jobs synchronized by the Bundle
+resources/            Databricks Bundle resource definitions
+sql/                  Local Genie function and smoke-test SQL
+infra/                Azure Bicep for the disposable Databricks environment
+docs/                 Detailed architecture and demo walkthroughs
+sample_data/          Baseline and contract-change demonstration files
+tests/                Local Python tests
+```
+
+Only `app/**` and `scripts/deployable/**` are synchronized by `databricks.yml`. Local scripts, SQL, documentation, sample data, tests, infrastructure source, caches, and development files are not Bundle payload.
+
+## Prerequisites
+
+- Azure Databricks Premium workspace
+- Databricks CLI authenticated to the target workspace
+- Unity Catalog permissions to create or use the catalog, schema, Volume, tables, functions, and AI Search objects
+- A serverless SQL Warehouse
+- A ready chat model endpoint, by default `databricks-llama-4-maverick`
+- A ready embedding endpoint, by default `databricks-qwen3-embedding-0-6b`
+- Python 3.11 or later for local scripts
+
+Install local development dependencies:
+
+```bash
+python3 -m venv .venv
+.venv/bin/python -m pip install -r requirements-dev.txt
+```
+
+## Deploy to an Existing Workspace
+
+Set the target profile and SQL Warehouse ID:
+
+```bash
+export DATABRICKS_CONFIG_PROFILE=<profile>
+export DATABRICKS_SQL_WAREHOUSE_ID=<warehouse-id>
+export DBAI_CATALOG=<catalog-name>
+```
+
+Validate and deploy the Bundle:
+
+```bash
+databricks bundle validate -t dev
+databricks bundle deploy -t dev \
+  --var="catalog=${DBAI_CATALOG}" \
+  --var="sql_warehouse_id=${DATABRICKS_SQL_WAREHOUSE_ID}"
+```
+
+Bootstrap the data-plane resources:
+
+```bash
+python3 scripts/local/bootstrap_demo_environment.py \
+  --target dev \
+  --warehouse-id "$DATABRICKS_SQL_WAREHOUSE_ID" \
+  --skip-deploy
+```
+
+Bootstrap creates or updates the structured tables, contract chunk source, AI Search endpoint and index, and Genie-facing SQL function. The triggered AI Search index requires a manual sync after the contract refresh completes.
+
+## Deploy a Disposable Azure Environment
+
+The wrapper provisions an isolated Azure resource group and Databricks workspace with Bicep, then runs the Bundle and bootstrap workflow:
+
+```bash
+export AZURE_SUBSCRIPTION_ID=<subscription-id>
+export DATABRICKS_CONFIG_PROFILE=dbai-demo
+scripts/local/deploy_demo_environment.sh
+```
+
+Use the local validation script before testing:
+
+```bash
+python3 scripts/local/validate_demo_workspace.py --require-index
+```
+
+To tear down the disposable environment:
+
+```bash
+scripts/local/destroy_demo_environment.sh --yes --dry-run
+scripts/local/destroy_demo_environment.sh --yes
+```
+
+## GitHub Actions Deployment
+
+Deployment is intentionally split into separate lifecycles:
+
+| Workflow | Trigger | Scope |
+| --- | --- | --- |
+| [`Deploy Infrastructure`](.github/workflows/deploy-infrastructure.yml) | Manual | Azure resource groups and Databricks workspaces |
+| [`Deploy Workload`](.github/workflows/deploy-workload.yml) | Workload changes on `main`, or manual | Databricks App, jobs, and Bundle resources |
+| [`Bootstrap Environment`](.github/workflows/bootstrap-environment.yml) | Manual | Catalog objects, sample data, contract chunks, AI Search, and Genie SQL function |
+
+`Deploy Workload` does not run Bicep or bootstrap data. This keeps normal SDLC
+releases fast and prevents an application change from recreating infrastructure
+or reloading demo data. `Deploy Infrastructure` is run once for each of `dev`,
+`test`, and `prod`, and again only when Azure infrastructure changes.
+
+All three workflows use GitHub OIDC with an Entra service principal. They do
+not use a Databricks personal access token or a browser login.
+
+Complete the Azure and GitHub setup from an administrator terminal. The script
+uses the administrator's existing `az login` and `gh auth login` sessions; no
+credentials need to be sent to the repository or entered in chat:
+
+```bash
+az login
+az account set --subscription <subscription-id>
+gh auth login
+scripts/local/configure_github_azure.sh \
+  --repo arvinddhasmana/dbai \
+  --subscription-id <subscription-id>
+```
+
+The script creates or reuses the Entra application, service principal, one
+federated credential per GitHub Environment, subscription role assignment, and
+the GitHub Environment settings. It uses `Contributor` by default; pass
+`--role <custom-role-name>` when a narrower Azure role is required.
+
+The script configures these GitHub Environment settings:
+
+- **Actions secrets** `AZURE_CLIENT_ID` and `AZURE_TENANT_ID`
+- **Actions variables** `AZURE_SUBSCRIPTION_ID`, `AZURE_LOCATION`,
+  `DBAI_RESOURCE_GROUP`, `DBAI_MANAGED_RESOURCE_GROUP`, and
+  `DBAI_WORKSPACE_NAME`
+- Optional **Actions variables** `DBAI_CATALOG`,
+  `DATABRICKS_SQL_WAREHOUSE_ID`, `MODEL_ENDPOINT`, and `AI_SEARCH_ENDPOINT`
+
+Configure data-plane values separately in the `dev`, `test`, and `prod` GitHub
+Environments. The default resource names are `rg-dbai-<environment>` and
+`dbai-<environment>`, so those variables can be omitted when using the Bicep
+defaults. `DBAI_CATALOG` and `DATABRICKS_SQL_WAREHOUSE_ID` are required for
+workload deployment and bootstrap.
+
+Azure `Contributor` does not grant Databricks data-plane permissions. Grant the
+service principal workspace access and the required Unity Catalog, SQL
+Warehouse, model-serving, AI Search, job, and App permissions in each workspace.
+
+`Deploy Infrastructure` runs `scripts/local/deploy_infrastructure.sh`.
+`Deploy Workload` logs in with `azure/login`, sets `DBAI_AUTH_MODE=azure-cli`,
+and runs `scripts/local/deploy_workload.sh` against the existing workspace.
+`Bootstrap Environment` uses the same OIDC session to run
+`scripts/local/bootstrap_demo_environment.py`. The AI Search helper obtains its
+bearer token from the non-interactive Azure CLI session. No long-lived
+credential is stored in the repository.
+
+Keep the federated credential subject restricted to the intended GitHub
+Environment. Required reviewers can be enabled for `test` or `prod` as an
+optional release approval; that is separate from authentication.
+
+## Use Databricks Genie
+
+The Genie-facing SQL function is defined in `sql/01_genie_search.sql`. Run it in a Databricks SQL editor using the target catalog, or use the bootstrap script to execute it automatically.
+
+Create a Genie space over:
+
+- `<catalog>.<schema>.dim_products`
+- `<catalog>.<schema>.dim_vendors`
+- `<catalog>.<schema>.fact_inventory_status`
+- `<catalog>.<schema>.search_vendor_contracts`, when contract questions are enabled
+
+Useful Genie questions:
+
+- Which inventory is delayed and what is its value?
+- What is the value of delayed inventory associated with Sarah Jenkins?
+- Which vendor supplies the Thermal Winter Coats?
+- What are the weather-delay rules for Gold Tier vendors in the Midwest?
+
+Genie is the SQL-first experience. Unity Catalog and SQL Warehouse enforce data access; the agent prompt does not replace those controls.
+
+## Use the Mosaic AI Agent App
+
+Open the deployed Databricks App and ask structured, contract, or mixed questions. The App uses an AgentServer hosted by Databricks Apps and a Databricks model-serving endpoint for final answer generation.
+
+Example questions:
+
+- `Which inventory is delayed and what is its value?`
+- `What are the weather-delay rules for VEND-789?`
+- `Which vendor supplies the Thermal Winter Coats, and what is their current transit status?`
+
+The App executes governed inventory and contract lookups server-side, then gives authoritative results to the answer writer. This avoids relying on model-generated SQL or unsupported textual tool calls. Contract answers include source-file and chunk citations when evidence is available.
+
+The browser keeps conversation history in memory. Refreshing the page starts a new conversation.
+
+## Run Data Jobs
+
+The deployable jobs are registered in `resources/dbai.resources.yml`:
+
+```bash
+databricks bundle run generate_mock_data -t dev
+databricks bundle run refresh_vendor_contract_chunks -t dev \
+  --notebook-params INGESTION_MODE=full_rebuild
+databricks bundle run upsert_demo_vendor -t dev
+```
+
+After refreshing contract chunks, trigger the configured AI Search index synchronization and wait for its update status to become completed before testing contract questions.
+
+## Test and Validate Locally
+
+```bash
+.venv/bin/python -m pytest -q
+.venv/bin/python -m compileall -q app/agent_server scripts/deployable
+bash -n scripts/local/deploy_demo_environment.sh scripts/local/destroy_demo_environment.sh
+```
+
+Workspace preflight:
+
+```bash
+python3 scripts/local/validate_demo_workspace.py \
+  --warehouse-id "$DATABRICKS_SQL_WAREHOUSE_ID" \
+  --require-index
+```
+
+## Governance and Operational Notes
+
+- Inventory access uses the signed-in Databricks identity and SQL Warehouse permissions.
+- The inventory lookup is read-only and limited to the approved Gold tables.
+- AI Search is a serving copy of contract data; source-table permissions do not automatically provide authorization for indexed content.
+- The AI Search source must remain a regular Delta table with Change Data Feed enabled. Streaming Tables and Materialized Views are not valid sources for this deployment.
+- The local scripts are intentionally outside the Bundle synchronization set.
+- Do not commit `.env`, `.databricks/`, `.dbai-state/`, `.azure/infrastructure-plan.json`, virtual environments, caches, or generated reports.
+
+## Further Documentation
+
+- [Business use case and demo guide](docs/01-business-use-case-and-demo-guide.md)
+- [Technical architecture](docs/02-technical-architecture-c4.md)
+- [Technical execution walkthrough](docs/03-technical-execution-walkthrough.md)
+- [Contract change demo](docs/05-contract-change-demo.md)
+- [Deployment compatibility and agent review](docs/06-deployment-compatibility-and-agent-review.md)

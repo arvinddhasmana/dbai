@@ -34,4 +34,8 @@ targets:
     mode: development
     default: true
 
-  ## Optionally, there could be 'staging' or 'prod' targets here.
+  test:
+    mode: production
+
+  prod:
+    mode: production

@@ -26,6 +26,7 @@ INDEX_NAME = os.getenv(
     f"{CATALOG}.{SCHEMA}.vendor_contract_chunks_index_rebuilt",
 )
 ENDPOINT_NAME = os.getenv("AI_SEARCH_ENDPOINT", "globalmart-supply-chain-search")
+DATABRICKS_AZURE_LOGIN_APP_ID = "2ff814a6-3304-4ab8-85cb-cd0e6f879c1d"
 ALLOWED_EXTENSIONS = {".txt", ".md", ".csv", ".json", ".html", ".pdf"}
 
 
@@ -33,29 +34,57 @@ def create_workspace_client():
     return WorkspaceClient()
 
 
+def azure_cli_access_token():
+    result = subprocess.run(
+        [
+            "az",
+            "account",
+            "get-access-token",
+            "--resource",
+            DATABRICKS_AZURE_LOGIN_APP_ID,
+            "--query",
+            "accessToken",
+            "--output",
+            "tsv",
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    return result.stdout.strip()
+
+
 def create_search_client():
     workspace_url = os.getenv("DATABRICKS_HOST")
     personal_access_token = os.getenv("DATABRICKS_TOKEN")
     if not personal_access_token:
-        profile = os.getenv("DATABRICKS_CONFIG_PROFILE")
-        command = ["databricks", "auth", "token"]
-        if profile:
-            command.append(profile)
-        command.extend(["-o", "json"])
-        try:
-            result = subprocess.run(
-                command,
-                check=True,
-                capture_output=True,
-                text=True,
-            )
-            personal_access_token = json.loads(result.stdout)["access_token"]
-        except (FileNotFoundError, subprocess.CalledProcessError, KeyError, json.JSONDecodeError) as error:
-            raise RuntimeError(
-                "AI Search requires DATABRICKS_TOKEN or a logged-in Databricks "
-                "CLI profile. Run `databricks auth login <profile> --host <workspace-url>` "
-                "and set DATABRICKS_CONFIG_PROFILE."
-            ) from error
+        if os.getenv("DATABRICKS_AUTH_TYPE") == "azure-cli":
+            try:
+                personal_access_token = azure_cli_access_token()
+            except (FileNotFoundError, subprocess.CalledProcessError) as error:
+                raise RuntimeError(
+                    "AI Search requires an Azure CLI login when DATABRICKS_AUTH_TYPE=azure-cli."
+                ) from error
+        else:
+            profile = os.getenv("DATABRICKS_CONFIG_PROFILE")
+            command = ["databricks", "auth", "token"]
+            if profile:
+                command.append(profile)
+            command.extend(["-o", "json"])
+            try:
+                result = subprocess.run(
+                    command,
+                    check=True,
+                    capture_output=True,
+                    text=True,
+                )
+                personal_access_token = json.loads(result.stdout)["access_token"]
+            except (FileNotFoundError, subprocess.CalledProcessError, KeyError, json.JSONDecodeError) as error:
+                raise RuntimeError(
+                    "AI Search requires DATABRICKS_TOKEN or a logged-in Databricks "
+                    "CLI profile. Run `databricks auth login <profile> --host <workspace-url>` "
+                    "and set DATABRICKS_CONFIG_PROFILE."
+                ) from error
     if not workspace_url:
         workspace_url = WorkspaceClient().config.host
     return AISearchClient(

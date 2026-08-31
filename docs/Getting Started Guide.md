@@ -33,6 +33,114 @@ scripts/local/deploy_demo_environment.sh
 If `DBAI_AUTH_MODE` is unset, the script uses the existing Databricks CLI
 profile and opens browser OAuth only when that profile is not authenticated.
 
+### GitHub Actions deployment
+
+The repository has three independent workflows:
+
+| Workflow | When to run it | What it does |
+| --- | --- | --- |
+| **Deploy Infrastructure** | Once per `dev`, `test`, and `prod`, or after `infra/**` changes | Deploys Azure resource groups and the Azure Databricks workspace with Bicep |
+| **Deploy Workload** | Automatically for workload changes on `main`, or manually | Deploys the Databricks App and Bundle-managed jobs to an existing workspace |
+| **Bootstrap Environment** | Once after infrastructure/workload setup, or when demo data/contracts change | Creates catalog objects, loads sample data, refreshes contract chunks, creates AI Search and the Genie function |
+
+The normal SDLC path is **Deploy Infrastructure** once, followed by
+**Bootstrap Environment** once, then **Deploy Workload** for application
+releases. Workload deployment does not run Bicep or reload data. The triggered AI
+Search index still requires an explicit manual synchronization after contract
+refresh.
+
+#### One-time administrator setup
+
+An authorized administrator must run the setup script from the repository root.
+I do not need GitHub or Azure credentials in chat. The administrator authenticates
+in their own terminal, and the script uses those short-lived login sessions:
+
+```bash
+az login
+az account set --subscription <subscription-id>
+gh auth login
+
+scripts/local/configure_github_azure.sh \
+     --repo arvinddhasmana/dbai \
+     --subscription-id <subscription-id>
+```
+
+The script is idempotent and configures:
+
+- One Entra application and service principal named `dbai-github-actions`.
+- One GitHub OIDC federated credential for each Environment: `dev`, `test`,
+  and `prod`.
+- Azure `Contributor` at the selected subscription scope, which is required
+  because Bicep creates resource groups at subscription scope.
+- GitHub Environments with `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`,
+  `AZURE_SUBSCRIPTION_ID`, location, resource group, managed resource group,
+  and workspace name variables.
+
+Use a narrower custom Azure role instead of `Contributor` when your governance
+model requires least privilege:
+
+```bash
+scripts/local/configure_github_azure.sh \
+     --repo arvinddhasmana/dbai \
+     --subscription-id <subscription-id> \
+     --role <custom-role-name>
+```
+
+The script never prints or stores a client secret. If an existing federated
+credential has the expected name but a different repository or Environment
+subject, it stops for administrator review rather than changing trust
+silently.
+
+The setup script can also write data-plane values when they are already known:
+
+```bash
+export DBAI_CATALOG_DEV=<dev-catalog>
+export DATABRICKS_SQL_WAREHOUSE_ID_DEV=<dev-warehouse-id>
+export DBAI_CATALOG_TEST=<test-catalog>
+export DATABRICKS_SQL_WAREHOUSE_ID_TEST=<test-warehouse-id>
+export DBAI_CATALOG_PROD=<prod-catalog>
+export DATABRICKS_SQL_WAREHOUSE_ID_PROD=<prod-warehouse-id>
+scripts/local/configure_github_azure.sh --repo arvinddhasmana/dbai
+```
+
+These values are optional during the first setup because the catalog and SQL
+Warehouse are Databricks data-plane resources. Set them in the corresponding
+GitHub Environment before running **Deploy Workload** or **Bootstrap
+Environment**.
+
+#### Configure Databricks access
+
+Azure `Contributor` does not grant Databricks data-plane access. A Databricks
+workspace administrator must grant the service principal:
+
+- Workspace access and the required App/job permissions.
+- `USE CATALOG`, `USE SCHEMA`, `CREATE VOLUME`, and table/function privileges
+  for the configured catalog.
+- `CAN USE` on the SQL Warehouse.
+- Permission to use the model-serving and AI Search resources.
+
+The service principal must also be able to run the Bundle-managed jobs. Confirm
+these permissions in each workspace before using **Bootstrap Environment**.
+
+#### Run the automated workflows
+
+1. In **Actions**, run **Deploy Infrastructure** for `dev`, then repeat for
+    `test` and `prod` as those environments are approved. This creates only
+    Azure infrastructure.
+2. Create or identify the catalog and SQL Warehouse in each workspace, then
+    set `DBAI_CATALOG` and `DATABRICKS_SQL_WAREHOUSE_ID` as Environment
+    variables. The workflows do not copy these values between environments.
+3. Run **Bootstrap Environment** for the selected environment. Wait for the
+    refresh job to finish, then manually trigger the `TRIGGERED` AI Search index
+    synchronization and wait for **Online** and **Completed** status.
+4. Push changes under `app/**`, `resources/**`, `scripts/deployable/**`, or
+    `databricks.yml` to `main` for automatic **Deploy Workload**, or run it
+    manually for `dev`, `test`, or `prod`.
+
+Configure required reviewers on the `test` and `prod` GitHub Environments if
+release approval is required. Reviewers are a release control, not an
+authentication workaround.
+
 ### Initial VS Code OAuth setup
 
 Complete this once on the machine where VS Code and the Databricks extension
@@ -104,10 +212,12 @@ databricks bundle run supply_chain_agent -t dev
 Do not commit `.env`. Authentication remains managed by the Databricks OAuth
 profile; no token belongs in this file.
 
-### Create a disposable Azure environment
+### Create a disposable Azure environment locally
 
-For a clean demo workspace, authenticate to Azure and run the repository
-orchestrator from the repository root:
+For a clean local demo workspace, authenticate to Azure and run the repository
+convenience orchestrator from the repository root. This combines infrastructure,
+workload deployment, and bootstrap for local use; GitHub Actions keeps those
+activities separate:
 
 ```bash
 az login
@@ -295,9 +405,11 @@ databricks current-user me -p aiarchitect
 ```
 
 The login command opens a browser and stores OAuth credentials in the local
-Databricks CLI profile. `WorkspaceClient` uses that profile directly. The AI
-Search SDK is bridged by the repository scripts through `databricks auth token`,
-so do not manually set `DATABRICKS_HOST` or copy a token for the normal flow.
+Databricks CLI profile. `WorkspaceClient` uses that profile directly. For local
+profile authentication, the repository scripts bridge the AI Search SDK through
+the Databricks CLI token cache. In GitHub Actions, `DBAI_AUTH_MODE=azure-cli`
+uses the short-lived Azure CLI token instead; do not copy a token into source
+control.
 
 Upload a file:
 
@@ -333,7 +445,7 @@ for local_file in Path("./contracts").iterdir():
         print(f"Uploaded {local_file} to {destination}")
 ```
 
-### 3. Deploy the bundle
+### 3. Deploy the bundle locally
 
 From the project root:
 
@@ -348,7 +460,7 @@ The bundle deploys three serverless jobs:
 - `refresh_vendor_contract_chunks` creates the regular Delta source for AI Search.
 - `upsert_demo_vendor` adds the new `VEND-321` row used by the lifecycle demo.
 
-### 4. Generate structured demo data
+### 4. Generate structured demo data locally
 
 Run:
 
@@ -356,7 +468,7 @@ Run:
 databricks bundle run generate_mock_data -t dev
 ```
 
-### 5. Refresh contract chunks
+### 5. Refresh contract chunks locally
 
 Run:
 
