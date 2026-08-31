@@ -1,0 +1,37 @@
+# This is a Declarative Automation Bundle definition for dbai.
+# The Databricks extension requires databricks.yml configuration file.
+# See https://docs.databricks.com/dev-tools/bundles/index.html for documentation.
+
+bundle:
+  name: dbai
+  engine: terraform
+
+include:
+  - resources/*.yml
+
+sync:
+  include:
+    - app/**
+    - scripts/deployable/**
+  exclude:
+    - .azure/**
+    - .env.example
+    - .vscode/**
+    - .venv/**
+    - .pytest_cache/**
+    - .dbai-state/**
+    - docs/**
+    - infra/**
+    - requirements-dev.txt
+    - sample_data/**
+    - tests/**
+    - .gitignore
+    - '**/__pycache__/**'
+    - '**/*.pyc'
+
+targets:
+  dev:
+    mode: development
+    default: true
+
+  ## Optionally, there could be 'staging' or 'prod' targets here.

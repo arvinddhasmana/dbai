@@ -1,0 +1,88 @@
+variables:
+  catalog:
+    description: Unity Catalog catalog used by this deployment.
+    default: dbai_demo
+  ai_search_endpoint:
+    description: Existing AI Search endpoint used by the managed index.
+    default: globalmart-supply-chain-search
+  model_endpoint:
+    description: Foundation model endpoint used by the custom supply-chain agent.
+    default: databricks-llama-4-maverick
+  sql_warehouse_id:
+    description: Serverless SQL warehouse used by the agent's read-only tools.
+    default: ""
+
+resources:
+  apps:
+    supply_chain_agent:
+      name: ${bundle.name}-${bundle.target}-supply-chain-agent
+      description: Custom GlobalMart supply-chain agent with SQL and contract retrieval.
+      source_code_path: ../app
+      config:
+        command: ["uv", "run", "start-server"]
+        env:
+          - name: MLFLOW_TRACKING_URI
+            value: databricks
+          - name: MLFLOW_REGISTRY_URI
+            value: databricks-uc
+          - name: MODEL_ENDPOINT
+            value: ${var.model_endpoint}
+          - name: DATABRICKS_SQL_WAREHOUSE_ID
+            value: ${var.sql_warehouse_id}
+          - name: DBAI_CATALOG
+            value: ${var.catalog}
+      user_api_scopes:
+        - sql
+        - model-serving
+
+  jobs:
+    # [CONTROL] Orchestrates contract landing discovery and Gold source refresh.
+    refresh_vendor_contract_chunks:
+      name: ${bundle.name}-${bundle.target}-refresh-contract-chunks
+      tasks:
+        - task_key: refresh
+          notebook_task:
+            notebook_path: ../scripts/deployable/refresh_vendor_contract_chunks.py
+            base_parameters:
+              INGESTION_MODE: incremental
+              CATALOG: ${var.catalog}
+          environment_key: default
+      environments:
+        - environment_key: default
+          spec:
+            environment_version: "2"
+            dependencies:
+              - pypdf>=5.0.0
+              - tiktoken>=0.7.0
+
+    # [CONTROL] Generates the Gold structured demo tables.
+    generate_mock_data:
+      name: ${bundle.name}-${bundle.target}-generate-mock-data
+      tasks:
+        - task_key: generate
+          notebook_task:
+            notebook_path: ../scripts/deployable/generate_mock_data.py
+            base_parameters:
+              CATALOG: ${var.catalog}
+          environment_key: default
+      environments:
+        - environment_key: default
+          spec:
+            environment_version: "2"
+            dependencies:
+              - databricks-sdk>=0.60.0
+
+    # [CONTROL] Adds or updates the vendor dimension row used by the contract demo.
+    upsert_demo_vendor:
+      name: ${bundle.name}-${bundle.target}-upsert-demo-vendor
+      tasks:
+        - task_key: upsert
+          notebook_task:
+            notebook_path: ../scripts/deployable/upsert_demo_vendor.py
+            base_parameters:
+              CATALOG: ${var.catalog}
+          environment_key: default
+      environments:
+        - environment_key: default
+          spec:
+            environment_version: "2"

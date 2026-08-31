@@ -1,0 +1,70 @@
+VENDOR AGREEMENT: PACIFIC WAREHOUSING (VEND-123)
+TIER: BRONZE | REGION: WEST
+EFFECTIVE DATE: JANUARY 1, 2026
+CONTRACT TERM: TWELVE MONTHS
+
+SECTION 1: PARTIES AND SERVICES
+
+This Vendor Services Agreement is between GlobalMart Retail Group and Pacific Warehousing, identified in GlobalMart systems as VEND-123. The supplier provides basic receiving, storage, order staging, and regional delivery coordination for home goods and general merchandise moving through the Western network. The Bronze Tier service is designed for standard freight that does not require dedicated capacity or premium appointment handling.
+
+The supplier must maintain accurate legal, tax, insurance, warehouse, banking, and contact information in the GlobalMart vendor portal. Any change to a facility address, operating schedule, dispatch contact, or approved carrier must be reported before the change affects an active order. GlobalMart may stop assigning new tenders if required documentation is missing or if a facility fails a basic safety review.
+
+SECTION 2: RECEIVING AND STORAGE REQUIREMENTS
+
+Products such as HydroFlask 32oz and other home goods must be received against the purchase order and counted by SKU. The supplier must check cartons for crushing, punctures, water exposure, broken seals, pest evidence, and incorrect labels. Exceptions must be written on the receiving record and supported by photographs when practical. Product must be stored in a clean, dry, secure area with reasonable protection from theft and environmental damage.
+
+Pallets must be stable and accessible for counting. Mixed-SKU pallets require a visible pallet manifest. The supplier must not move, relabel, combine, dispose of, or repackage GlobalMart inventory without authorization. Items placed on quality hold or damage hold must be physically separated from available stock and may not be shipped until released by GlobalMart.
+
+The supplier must maintain inventory records showing receipt date, product identifier, carton quantity, unit quantity, warehouse location, hold status, and available balance. A monthly cycle count is required for active inventory. Variances must be reported within two business days. GlobalMart may request a recount or physical inspection when system balances differ from purchase order, shipment, or receiving records.
+
+SECTION 3: ORDER ACCEPTANCE AND DELIVERY
+
+GlobalMart may send an order through the vendor portal, electronic data interchange, or an authorized email contact. The supplier must acknowledge the order within one business day and confirm the pickup window, delivery destination, expected arrival, equipment, and any capacity issue. An order that cannot be serviced as requested must be declined or escalated before dispatch.
+
+Bronze Tier service requires an on-time delivery rate of at least 90 percent, accurate carton counts, and electronic proof of delivery within forty-eight hours. The supplier must provide a receiver name, date, time, shipment reference, quantity delivered, and visible exception notation. A missed appointment must be reported to the GlobalMart transportation desk as soon as it is known.
+
+The supplier is responsible for ordinary route planning, carrier scheduling, dispatch coordination, and communication with receiving locations. GlobalMart may authorize an alternate carrier or expedited movement when a customer-impacting delay occurs. The supplier must not incur premium transportation charges on GlobalMart's behalf without written approval except where immediate action is necessary to protect people or inventory.
+
+SECTION 4: FINANCIAL LIABILITY & LATE PENALTIES
+
+4.1 STANDARD DELAY FEES: Shipments arriving late incur a strict 10% invoice penalty per day.
+
+4.2 WEATHER CLAUSE: Bronze Tier agreements do not include weather exemptions. The supplier (VEND-123) maintains 100% financial liability for all transit delays, regardless of weather conditions, acts of God, or regional infrastructure shutdowns.
+
+The delay penalty applies to the shipment invoice value and continues until delivery is completed or GlobalMart directs a return, cancellation, or alternate disposition. The supplier must notify GlobalMart within four hours of a known or probable delay. Notice must include the shipment reference, current location, cause, affected products, revised arrival time, and recovery plan. Notification does not waive the penalty or transfer responsibility.
+
+Because Bronze Tier service does not include a weather exemption, the supplier must plan for normal and severe conditions in the Western region, including heat, wildfire smoke, flooding, snow, mountain pass closures, earthquakes, port disruption, and regional infrastructure shutdowns. The supplier must maintain reasonable alternate-route and alternate-carrier procedures. A claim that a delay was unavoidable does not remove the financial liability stated in this section.
+
+GlobalMart may deduct undisputed penalties, recovery transportation, handling fees, customer credits authorized by GlobalMart, and documented inventory loss from amounts payable to the supplier. The supplier may challenge a charge within thirty days with route history, appointment records, carrier correspondence, and evidence that mitigation was attempted. Disputes do not suspend the supplier's responsibility for active shipments.
+
+SECTION 5: SHORTAGE, DAMAGE, AND RETURNS
+
+The supplier must preserve shipment identity from pickup through delivery. Shortages, overages, substitutions, and damaged units must be recorded at the time of receipt or discovery. The supplier must report concealed damage within two business days and retain affected product, packaging, labels, and photographs until disposition is approved.
+
+For a shortage or damage claim, the supplier must provide a root-cause summary within five business days. Supporting records may include loading scans, warehouse counts, seal numbers, transfer records, carrier manifests, and delivery signatures. GlobalMart may require replacement product, a credit, return freight, disposal, or expedited recovery. Unauthorized disposal or resale of affected inventory is prohibited.
+
+Returns must be assigned a return authorization and processed against the applicable product and purchase order. Returned goods must be inspected, counted, and classified as resalable, repairable, damaged, or unsellable. The supplier must report the disposition and supporting quantity reconciliation within ten business days.
+
+SECTION 6: SECURITY, CONFIDENTIALITY, AND RECORDS
+
+The supplier may use GlobalMart information only to perform this agreement. Accounts must be unique to each user, protected from sharing, and removed promptly when access is no longer needed. Purchase orders, customer addresses, inventory balances, pricing, shipment references, and operational reports are confidential. A suspected unauthorized access, lost device, data disclosure, or malware incident must be reported within twenty-four hours.
+
+The supplier must retain purchase orders, receiving records, inventory counts, bills of lading, proof of delivery, invoices, claims, photographs, and exception communications for seven years. Records must be provided in a readable electronic format within five business days of request. The supplier must preserve records connected to any open dispute, audit, recall, or customer complaint.
+
+SECTION 7: INSURANCE AND BUSINESS CONTINUITY
+
+The supplier must maintain commercial general liability, automobile liability, workers compensation, cargo coverage, and legally required insurance. Certificates must be provided before the first shipment and renewed before expiration. Any cancellation, nonrenewal, or material reduction must be reported to GlobalMart promptly.
+
+The supplier must maintain basic continuity procedures for severe weather, fire, earthquake, power loss, facility closure, labor interruption, carrier failure, and system outage. Procedures must identify an emergency contact, alternate dispatch method, backup storage option, and communication schedule. During a disruption, the supplier must provide a daily status report until all affected orders are delivered or otherwise resolved.
+
+SECTION 8: AUDIT AND PERFORMANCE IMPROVEMENT
+
+GlobalMart may review warehouse practices, shipment records, inventory controls, insurance, and service-level calculations on reasonable notice. The supplier must cooperate with an audit and correct material findings within the agreed time. Repeated late deliveries, unexplained inventory variances, or incomplete records may result in reduced tender allocation, a corrective action plan, or suspension of new orders.
+
+Corrective action plans must state the failure, immediate containment, root cause, responsible owner, due date, and evidence of completion. Escalations should begin with the supplier account contact and may proceed to the Western logistics lead and GlobalMart procurement management.
+
+SECTION 9: TERM AND TERMINATION
+
+Either party may terminate this agreement for convenience with thirty days written notice. Immediate termination is permitted for fraud, insolvency, loss of required insurance, serious confidentiality breach, or an uncured material breach. Payment obligations, claims, confidentiality, record retention, and responsibility for accepted shipments survive termination.
+
+The supplier may not subcontract material services without written approval and remains responsible for approved subcontractors. This agreement and accepted purchase orders represent the complete understanding for the covered services. Changes must be approved by authorized representatives and recorded in writing.

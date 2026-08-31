@@ -1,0 +1,25 @@
+VENDOR AGREEMENT AMENDMENT: ALPINE APPAREL LTD (VEND-456)
+TIER: SILVER | REGION: NORTHEAST
+AMENDMENT EFFECTIVE DATE: AUGUST 1, 2026
+
+This amendment updates the existing GlobalMart Vendor Services Agreement for Alpine Apparel Ltd, identified as VEND-456. All provisions not changed below remain in effect.
+
+SECTION 3: UPDATED SERVICE LEVELS
+
+For seasonal launches, Alpine Apparel must acknowledge a tender within four business hours and provide capacity, pickup date, estimated arrival, equipment type, shipment reference, and any route exception. The supplier must maintain a monthly on-time delivery rate of at least 97 percent and tender acceptance of at least 98 percent. Electronic proof of delivery and an advance shipment notice are required before the receiving appointment whenever the systems support that exchange.
+
+SECTION 4: UPDATED FINANCIAL LIABILITY AND WEATHER
+
+4.1 STANDARD DELAY FEES: If a shipment is delayed past the scheduled delivery window for a supplier-controlled reason, a fixed fee of $750 per container per day applies. Supplier-controlled reasons include missed appointments, incorrect paperwork, equipment shortages, driver scheduling issues, and inadequate capacity planning.
+
+4.2 WEATHER CLAUSE: For a declared Northeast winter storm, highway closure, port restriction, or unsafe-travel condition, penalties are capped at a maximum of $2,000 total per affected shipment. Alpine Apparel remains liable for the first $2,000. GlobalMart covers additional delay costs only when the supplier gave notice within four hours, followed reasonable mitigation steps, and provided a recovery estimate.
+
+Ordinary seasonal congestion, preventable paperwork errors, missed appointments, and equipment shortages do not qualify for the weather cap. Alpine Apparel must identify each affected container, last confirmed location, cause, current status, and revised delivery estimate in the notice.
+
+SECTION 5: UPDATED EXCEPTION HANDLING
+
+The supplier must report shortages, visible damage, or temperature and moisture exposure at delivery. A root-cause investigation is required within three business days for any shortage or damage claim. The investigation must compare the purchase order, pick list, loading scan, seal record, carrier manifest, receiving count, and delivery photographs. GlobalMart may require replacement inventory, a credit, or expedited recovery at the supplier's expense.
+
+SECTION 6: CONTINUING TERMS
+
+The supplier must maintain insurance, controlled-access facilities, quarterly inventory counts, seven-year record retention, and continuity procedures for winter storms, labor shortages, facility closure, transportation interruption, system outage, and product recall. The original agreement's confidentiality, audit, escalation, subcontracting, payment, and termination terms remain unchanged.

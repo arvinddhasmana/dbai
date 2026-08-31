@@ -1,0 +1,36 @@
+VENDOR AGREEMENT: NORTHSTAR COLD CHAIN (VEND-321)
+TIER: PLATINUM | REGION: SOUTHEAST
+EFFECTIVE DATE: AUGUST 1, 2026
+CONTRACT TERM: TWELVE MONTHS
+
+SECTION 1: PARTIES AND SERVICES
+
+This Vendor Services Agreement is between GlobalMart Retail Group and Northstar Cold Chain, identified in GlobalMart systems as VEND-321. Northstar provides temperature-controlled transportation, cross-docking, and short-term storage for health, beauty, and temperature-sensitive products moving through the Southeast network. The Platinum Tier service includes dedicated capacity, appointment priority, and proactive exception management.
+
+The supplier must keep its legal entity, tax, insurance, facility, carrier, banking, and emergency contact information current in the GlobalMart vendor portal. Changes to a facility, approved carrier, operating schedule, or dispatch contact must be reported at least ten business days before the change affects an active order. GlobalMart may suspend tender awards when required compliance information is missing or expired.
+
+SECTION 2: TEMPERATURE AND HANDLING REQUIREMENTS
+
+The supplier must keep products within the temperature range stated on the purchase order from pickup through delivery. Refrigerated trailers must be pre-cooled before loading, equipped with a calibrated temperature recorder, and inspected for cleanliness, odor, water intrusion, and product residue. The supplier must record seal numbers, loading temperature, delivery temperature, and any excursion in the shipment record.
+
+Temperature excursions, damaged packaging, broken seals, late appointments, or equipment failures must be reported to GlobalMart within one hour. Affected product must be segregated and held for disposition. The supplier must not release, relabel, rework, or dispose of affected product without written authorization.
+
+SECTION 3: DELIVERY SERVICE LEVELS
+
+The supplier must acknowledge each tender within two business hours and maintain at least 99 percent on-time delivery and 99 percent tender acceptance each calendar month. Proof of delivery, temperature records, seal condition, receiver name, and exception notation must be submitted within four hours of delivery. A missed appointment requires immediate notification and a recovery plan with a revised arrival time.
+
+GlobalMart may request a dedicated vehicle, alternate route, expedited recovery, or additional status checks for a customer-impacting event. The supplier must provide live shipment status at least every two hours during an active exception and must preserve all records for seven years.
+
+SECTION 4: FINANCIAL LIABILITY AND WEATHER
+
+4.1 STANDARD DELAY FEES: A 7 percent penalty per day applies to the affected shipment invoice when a delay is caused by supplier negligence, equipment failure, missed appointment, or inadequate planning.
+
+4.2 WEATHER CLAUSE: A named tropical storm, hurricane, flood, or state-declared unsafe-travel condition in the Southeast qualifies as Force Majeure only for the directly affected route. Daily late penalties are waived while the condition prevents safe movement. Northstar remains responsible for product protection, temperature monitoring, communication, and reasonable mitigation.
+
+The supplier must notify GlobalMart within one hour of a weather warning that may affect a shipment. Notice must include the route, shipment list, current temperature, current location, facility status, revised estimate, and mitigation plan. Ordinary rain, traffic, staffing shortages, poor planning, and equipment failure do not qualify for the weather exception.
+
+SECTION 5: SECURITY, AUDIT, AND TERMINATION
+
+The supplier may use GlobalMart information only to perform this agreement. Accounts must be unique, protected from sharing, and removed when access is no longer needed. A suspected security incident must be reported within twenty-four hours. GlobalMart may audit service, temperature, inventory, insurance, and continuity records on reasonable notice.
+
+Either party may terminate for convenience with thirty days written notice. Immediate termination is permitted for fraud, insolvency, loss of required insurance, serious confidentiality breach, or uncured material breach. Accepted shipments, payment obligations, claims, confidentiality, and record-retention duties survive termination.

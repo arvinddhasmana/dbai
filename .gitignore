@@ -1,0 +1,32 @@
+
+# Local credentials and tool state
+.databricks/
+.dbai-state/
+.env
+.azure/infrastructure-plan.json
+.vscode/
+
+# Python environments and caches
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.pyright/
+
+# Test and coverage output
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+
+# Python build output
+build/
+dist/
+*.egg-info/
+
+# Local operating-system output
+.DS_Store
+Thumbs.db
+*.log

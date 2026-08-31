@@ -1,0 +1,66 @@
+VENDOR AGREEMENT: ALPINE APPAREL LTD (VEND-456)
+TIER: SILVER | REGION: NORTHEAST
+EFFECTIVE DATE: JANUARY 1, 2026
+CONTRACT TERM: TWELVE MONTHS
+
+SECTION 1: PARTIES AND SCOPE
+
+This Vendor Services Agreement is between GlobalMart Retail Group and Alpine Apparel Ltd, identified as VEND-456. The supplier supports inbound transportation, regional consolidation, and short-term storage for apparel products, including Thermal Winter Coats and related seasonal merchandise. This agreement applies to purchase orders, routing instructions, and delivery appointments accepted by the supplier through the GlobalMart vendor portal.
+
+The supplier must keep its legal name, remit-to address, tax forms, insurance certificates, facility list, and operational contacts current. Any change to a warehouse, carrier, or primary dispatch contact must be reported before the next shipment is tendered. GlobalMart may place a temporary hold on new orders when compliance information has expired or when the supplier cannot demonstrate adequate seasonal capacity.
+
+SECTION 2: APPAREL QUALITY AND PACKAGING
+
+Apparel must be clean, dry, odor-free, and protected from moisture, dust, pests, and unauthorized handling. Garments must remain in the packaging specified by the purchase order. Cartons must show SKU, size range, color, unit count, purchase order number, and destination. Labels must be readable after normal handling and must match the electronic advance shipment notice.
+
+Winter coats and other seasonal products must be stored off the floor on pallets or approved shelving. The supplier must use first-in, first-out handling unless GlobalMart specifies a lot, season, or allocation priority. Cartons with water damage, broken seals, crushing, contamination, or incorrect labels must be segregated and photographed. The supplier must not rework or relabel product without written direction.
+
+SECTION 3: ORDERS AND SERVICE LEVELS
+
+GlobalMart may transmit orders through electronic data interchange, the vendor portal, or an authorized email address. The supplier must acknowledge a tender within eight business hours. The acknowledgement must include available capacity, pickup date, estimated arrival, equipment type, shipment reference, and any exception to the requested route. If a requested appointment cannot be met, the supplier must notify GlobalMart before accepting the tender.
+
+The supplier is expected to maintain a monthly on-time delivery rate of at least 94 percent and tender acceptance of at least 96 percent. Silver Tier service includes electronic proof of delivery within twenty-four hours, accurate carton counts, and an advance shipment notice before arrival. GlobalMart reviews performance monthly and may require a corrective action plan when service falls below target for two consecutive months.
+
+For seasonal launches, GlobalMart may issue a capacity forecast up to twelve weeks in advance. The supplier must confirm the portion of the forecast it can support and identify blackout dates, equipment restrictions, and labor limitations. A forecast is not a firm order, but an accepted tender is binding unless the transportation desk approves a change.
+
+SECTION 4: FINANCIAL LIABILITY & LATE PENALTIES
+
+4.1 STANDARD DELAY FEES: If shipments are delayed past the scheduled delivery window, a fixed fee of $500 per container per day will apply.
+
+4.2 WEATHER CLAUSE: In the event of severe Northeast winter weather, penalties are capped at a maximum of $1,500 total per shipment. The supplier remains liable for the initial $1,500, after which GlobalMart covers additional delays.
+
+The weather cap applies only to delays directly caused by declared winter storms, highway closures, port restrictions, or unsafe travel conditions in the Northeast. The supplier must provide notice within four hours, identify the affected containers, state the last confirmed location, and provide a revised delivery estimate. Equipment shortages, missed appointments, driver scheduling issues, incorrect paperwork, and ordinary seasonal congestion do not qualify for the weather cap.
+
+GlobalMart may offset undisputed delay fees against an invoice. The supplier may dispute a charge within thirty days by submitting appointment records, carrier tracking, weather notices, and evidence of mitigation. Both parties will review disputed amounts in good faith. The supplier must not delay unrelated deliveries because of a disputed invoice.
+
+SECTION 5: DELIVERY, SHORTAGE, AND DAMAGE CONTROL
+
+The supplier must arrive within the confirmed pickup window and verify the number of cartons, pallets, and seals before departure. At delivery, the driver must obtain a receiver signature and document shortages, overages, visible damage, or refused cartons. Concealed damage must be reported within two business days after discovery. A delivery record without an exception notation may be treated as confirmation that the visible shipment was received in acceptable condition.
+
+Short shipments require an investigation within five business days. The investigation must compare the purchase order, pick list, loading scan, seal record, carrier manifest, and receiving count. If the supplier is responsible, GlobalMart may request replacement inventory, a credit, or expedited recovery at the supplier's expense. The supplier must preserve affected cartons until GlobalMart provides disposition instructions.
+
+SECTION 6: STORAGE AND INVENTORY CONTROLS
+
+Supplier facilities must maintain controlled access, adequate lighting, fire protection, pest-control procedures, and protection from water intrusion. GlobalMart inventory must be separately identifiable from other customer inventory. Cycle counts must be performed at least monthly during peak season and quarterly at other times. Count variances greater than one percent require written explanation and reconciliation.
+
+The supplier must provide inventory snapshots showing receipt date, SKU, carton quantity, unit quantity, location, hold status, and available quantity. Inventory on quality hold may not be shipped without release authorization. GlobalMart may request a physical count when system inventory does not reconcile with shipment or receiving records.
+
+SECTION 7: DATA SECURITY AND CONFIDENTIALITY
+
+The supplier may access only systems and data necessary to perform the services. User accounts must be individual, protected by strong authentication, and removed promptly when access is no longer required. Purchase orders, product allocations, customer delivery information, pricing, and inventory reports are confidential. A suspected security incident must be reported to GlobalMart within twenty-four hours with known facts and containment actions.
+
+Electronic records must be retained for seven years, including proof of delivery, appointment history, manifests, inventory counts, exception reports, invoices, and claims correspondence. Records must be made available in a common electronic format within five business days of request. The supplier must not delete or alter records relevant to an open claim, audit, or investigation.
+
+SECTION 8: INSURANCE AND CONTINUITY
+
+The supplier must maintain commercial general liability, automobile liability, workers compensation, cargo coverage, and any insurance required by law. Certificates of insurance must be provided before service begins and renewed before expiration. The supplier must notify GlobalMart of cancellation, material reduction, or nonrenewal.
+
+The supplier must maintain continuity procedures for winter storms, labor shortages, facility closure, transportation interruption, system outage, and product recall. Procedures must identify alternate carriers, backup warehouse space, emergency contacts, and customer communication responsibilities. During an active disruption, the supplier must send a status update at least once each business day.
+
+SECTION 9: AUDIT AND ESCALATION
+
+GlobalMart may review service records, inventory controls, packaging practices, and security procedures on reasonable notice. The supplier must cooperate and provide access to relevant records. Critical findings require immediate containment and a written remediation plan. Operational disputes should be raised with the account manager, then escalated to the Northeast transportation lead and the GlobalMart logistics director if unresolved.
+
+SECTION 10: TERM AND TERMINATION
+
+Either party may terminate for convenience with thirty days written notice. Immediate termination is permitted for fraud, insolvency, loss of required insurance, material confidentiality breach, or an uncured material breach. Accepted purchase orders, payment obligations, confidentiality, claims handling, and record retention survive termination. The supplier may not subcontract material services without approval and remains accountable for approved subcontractors.

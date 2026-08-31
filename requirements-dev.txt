@@ -1,0 +1,3 @@
+databricks-sdk>=0.60.0
+databricks-ai-search>=0.1.0
+pytest>=8.0.0

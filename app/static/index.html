@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>GlobalMart Supply Chain Intelligence</title>
+  <style>
+    :root {
+      --ink: #15232d;
+      --muted: #667782;
+      --paper: #f4f1e9;
+      --panel: #fffdf8;
+      --line: #d8d1c3;
+      --teal: #0e6b68;
+      --teal-dark: #084b4a;
+      --coral: #d65f4a;
+      --shadow: 0 18px 45px rgba(21, 35, 45, .12);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      color: var(--ink);
+      background: var(--paper);
+      font-family: Georgia, "Times New Roman", serif;
+      min-height: 100vh;
+    }
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      opacity: .26;
+      background-image: linear-gradient(90deg, rgba(14,107,104,.07) 1px, transparent 1px), linear-gradient(rgba(14,107,104,.07) 1px, transparent 1px);
+      background-size: 28px 28px;
+      mask-image: linear-gradient(to bottom, black, transparent 82%);
+    }
+    main { width: min(1120px, calc(100% - 36px)); margin: 0 auto; padding: 34px 0 52px; position: relative; }
+    header { display: flex; align-items: flex-end; justify-content: space-between; gap: 28px; padding: 14px 0 30px; border-bottom: 1px solid var(--line); }
+    .eyebrow { color: var(--coral); font: 700 11px/1.2 Arial, sans-serif; letter-spacing: 2px; text-transform: uppercase; }
+    h1 { margin: 8px 0 0; max-width: 680px; font-size: clamp(30px, 5vw, 62px); font-weight: 400; line-height: .98; }
+    .status { display: flex; align-items: center; gap: 8px; color: var(--muted); font: 12px Arial, sans-serif; white-space: nowrap; }
+    .status::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: #3e9a75; box-shadow: 0 0 0 4px rgba(62,154,117,.14); }
+    .workspace { display: grid; grid-template-columns: 240px minmax(0, 1fr); gap: 24px; padding-top: 28px; }
+    aside { padding: 6px 4px; }
+    aside h2 { margin: 0 0 14px; font: 700 12px Arial, sans-serif; letter-spacing: 1px; text-transform: uppercase; }
+    aside p { margin: 0 0 20px; color: var(--muted); font: 14px/1.55 Arial, sans-serif; }
+    .prompt { width: 100%; border: 1px solid var(--line); border-radius: 4px; background: transparent; padding: 11px 12px; color: var(--ink); text-align: left; cursor: pointer; font: 13px/1.35 Arial, sans-serif; margin-bottom: 8px; }
+    .prompt:hover { border-color: var(--teal); color: var(--teal-dark); background: rgba(255,253,248,.6); }
+    .chat { min-height: 610px; display: flex; flex-direction: column; background: rgba(255,253,248,.86); border: 1px solid var(--line); box-shadow: var(--shadow); }
+    .messages { flex: 1; padding: 28px; overflow-y: auto; }
+    .message { display: grid; grid-template-columns: 76px minmax(0, 1fr); gap: 18px; padding: 0 0 24px; animation: rise .35s ease both; }
+    .message + .message { border-top: 1px solid #ebe5d9; padding-top: 24px; }
+    .role { color: var(--coral); font: 700 10px Arial, sans-serif; letter-spacing: 1.2px; text-transform: uppercase; padding-top: 5px; }
+    .message.user .role { color: var(--teal); }
+    .content { white-space: pre-wrap; font: 16px/1.58 Georgia, serif; overflow-wrap: anywhere; }
+    .welcome { color: var(--muted); }
+    form { display: flex; gap: 12px; border-top: 1px solid var(--line); padding: 18px; background: #f9f6ef; }
+    textarea { flex: 1; min-height: 52px; max-height: 150px; resize: vertical; border: 1px solid var(--line); border-radius: 3px; padding: 14px; color: var(--ink); background: var(--panel); font: 15px/1.4 Arial, sans-serif; }
+    textarea:focus { outline: 2px solid rgba(14,107,104,.25); border-color: var(--teal); }
+    button[type="submit"] { align-self: stretch; border: 0; border-radius: 3px; padding: 0 22px; background: var(--teal); color: white; cursor: pointer; font: 700 12px Arial, sans-serif; letter-spacing: 1px; text-transform: uppercase; }
+    button[type="submit"]:hover { background: var(--teal-dark); }
+    button:disabled { cursor: wait; opacity: .55; }
+    .hint { margin: 12px 18px 0; color: var(--muted); font: 11px Arial, sans-serif; }
+    @keyframes rise { from { opacity: 0; transform: translateY(7px); } to { opacity: 1; transform: none; } }
+    @media (max-width: 740px) { main { width: min(100% - 24px, 620px); padding-top: 18px; } header { align-items: flex-start; flex-direction: column; gap: 16px; } .workspace { grid-template-columns: 1fr; gap: 8px; } aside { padding: 0; } aside p { margin-bottom: 12px; } .prompt { width: auto; margin: 0 5px 8px 0; } .chat { min-height: 560px; } .messages { padding: 20px 16px; } .message { grid-template-columns: 1fr; gap: 4px; padding-bottom: 18px; } .message + .message { padding-top: 18px; } form { padding: 12px; flex-direction: column; } button[type="submit"] { min-height: 48px; } }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <div><div class="eyebrow">GlobalMart / Operations intelligence</div><h1>Ask the supply chain a better question.</h1></div>
+      <div class="status">Agent online</div>
+    </header>
+    <section class="workspace">
+      <aside>
+        <h2>Try a question</h2>
+        <p>Mix inventory facts with contract evidence. Every answer is grounded in the current Gold data and active search index.</p>
+        <button class="prompt">Which inventory is delayed and what is its value?</button>
+        <button class="prompt">What are the weather-delay rules for VEND-789?</button>
+        <button class="prompt">Which vendor supplies the Thermal Winter Coats, and what is their current transit status?</button>
+      </aside>
+      <section class="chat" aria-label="Supply chain assistant">
+        <div class="messages" id="messages"><div class="message"><div class="role">Assistant</div><div class="content welcome">I can look across inventory, vendors, products, and active contract clauses. Ask an operational, contract, or mixed question.</div></div></div>
+        <div class="hint">Answers use the permissions of your Databricks identity.</div>
+        <form id="chat-form"><textarea id="question" placeholder="Ask about inventory, vendors, or contract obligations..." aria-label="Question" required></textarea><button type="submit">Ask</button></form>
+      </section>
+    </section>
+  </main>
+  <script>
+    const messages = document.getElementById('messages');
+    const form = document.getElementById('chat-form');
+    const question = document.getElementById('question');
+    const submit = form.querySelector('button');
+    const history = [];
+
+    function addMessage(role, text) {
+      const wrapper = document.createElement('div');
+      wrapper.className = `message ${role.toLowerCase()}`;
+      const label = document.createElement('div');
+      label.className = 'role';
+      label.textContent = role;
+      const content = document.createElement('div');
+      content.className = 'content';
+      content.textContent = text;
+      wrapper.append(label, content);
+      messages.appendChild(wrapper);
+      messages.scrollTop = messages.scrollHeight;
+      return content;
+    }
+
+    function responseText(payload) {
+      if (!payload || !Array.isArray(payload.output)) return 'The agent returned an unexpected response.';
+      const text = payload.output.flatMap(item => item.content || []).filter(part => part.type === 'output_text' || part.type === 'text').map(part => part.text).filter(Boolean).join('\n');
+      return text || 'The agent did not return a final answer.';
+    }
+
+    document.querySelectorAll('.prompt').forEach(button => button.addEventListener('click', () => { question.value = button.textContent; question.focus(); }));
+    form.addEventListener('submit', async event => {
+      event.preventDefault();
+      const text = question.value.trim();
+      if (!text) return;
+      addMessage('You', text);
+      history.push({ role: 'user', content: text });
+      question.value = '';
+      submit.disabled = true;
+      const pending = addMessage('Assistant', 'Working across the governed data sources...');
+      try {
+        const response = await fetch('/invocations', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ input: history }) });
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.detail || payload.message || 'The agent request failed.');
+        const answer = responseText(payload);
+        pending.textContent = answer;
+        history.push({ role: 'assistant', content: answer });
+      } catch (error) {
+        pending.textContent = `Unable to complete the request: ${error.message}`;
+      } finally {
+        submit.disabled = false;
+        question.focus();
+      }
+    });
+  </script>
+</body>
+</html>
