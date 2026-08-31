@@ -84,6 +84,15 @@ if [[ ! "$repo" =~ ^[^/]+/[^/]+$ ]]; then
   exit 1
 fi
 
+read -r repository_owner repository_owner_id repository_name repository_id < <(
+  gh api "repos/${repo}" \
+    --jq '[.owner.login, (.owner.id | tostring), .name, (.id | tostring)] | @tsv'
+)
+if [[ -z "$repository_owner" || -z "$repository_owner_id" || -z "$repository_name" || -z "$repository_id" ]]; then
+  printf 'Could not resolve GitHub repository identity: %s\n' "$repo" >&2
+  exit 1
+fi
+
 if [[ -z "$subscription_id" ]]; then
   subscription_id="$(az account show --query id --output tsv)"
 fi
@@ -139,7 +148,8 @@ for environment in "${environments[@]}"; do
   fi
 
   credential_name="github-${environment}"
-  subject="repo:${repo}:environment:${environment}"
+  legacy_subject="repo:${repository_owner}/${repository_name}:environment:${environment}"
+  subject="repo:${repository_owner}@${repository_owner_id}/${repository_name}@${repository_id}:environment:${environment}"
   existing_subject="$(az ad app federated-credential list \
     --id "$app_id" \
     --query "[?name=='${credential_name}'].subject | [0]" \
@@ -152,6 +162,15 @@ for environment in "${environments[@]}"; do
       --parameters "$credential_json" \
       --output none
     printf 'Created federated credential: %s\n' "$credential_name"
+  elif [[ "$existing_subject" == "$legacy_subject" ]]; then
+    credential_json="$(printf '{"issuer":"%s","subject":"%s","description":"GitHub Actions %s deployment","audiences":["%s"]}' \
+      "$issuer" "$subject" "$environment" "$audience")"
+    az ad app federated-credential update \
+      --id "$app_id" \
+      --federated-credential-id "$credential_name" \
+      --parameters "$credential_json" \
+      --output none
+    printf 'Migrated federated credential to immutable GitHub subject: %s\n' "$credential_name"
   elif [[ "$existing_subject" != "$subject" ]]; then
     printf 'Federated credential %s exists with a different subject. Remove or update it before rerunning.\n' "$credential_name" >&2
     exit 1
