@@ -44,8 +44,18 @@ if [[ -z "$python_executable" ]]; then
   if [[ -x "$REPOSITORY_ROOT/.venv/bin/python" ]]; then
     python_executable="$REPOSITORY_ROOT/.venv/bin/python"
   else
-    python_executable="/opt/az/bin/python3"
+    python_executable="$(command -v python3 || true)"
   fi
+fi
+
+if [[ -z "$python_executable" || ! -x "$python_executable" ]]; then
+  printf '%s\n' 'A Python interpreter is required. Set DBAI_PYTHON or install python3.' >&2
+  exit 1
+fi
+if ! "$python_executable" -c 'import databricks' >/dev/null 2>&1; then
+  printf 'Python interpreter %s is missing the Databricks SDK. Install requirements-dev.txt or set DBAI_PYTHON.\n' \
+    "$python_executable" >&2
+  exit 1
 fi
 
 for argument in "$@"; do
