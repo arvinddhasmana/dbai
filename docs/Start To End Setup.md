@@ -118,6 +118,18 @@ terminal for later steps:
 export DEPLOYMENT_CLIENT_ID="<client-id-printed-by-the-script>"
 ```
 
+When rerunning this step, pass the existing client ID explicitly if multiple
+Entra applications use the display name `dbai-github-actions`:
+
+```bash
+scripts/local/configure_github_azure.sh \
+  --repo "$REPO" \
+  --subscription-id "$SUBSCRIPTION_ID" \
+  --app-name dbai-github-actions \
+  --client-id "$DEPLOYMENT_CLIENT_ID" \
+  --environments "$ENVIRONMENT"
+```
+
 You do not need to run this step again just because the Azure resource group or
 Databricks workspace was recreated. Run it again only when the repository's
 GitHub OIDC configuration or Entra application does not exist.
@@ -238,8 +250,9 @@ same command:
 
 The script is safe to rerun. It discovers or creates the current workspace's
 isolated catalog and SQL Warehouse, assigns the deployment service principal,
-sets required workspace permissions, and writes the current catalog and
-warehouse values to the selected GitHub Environment.
+grants it delegated `MANAGE` on the isolated catalog so Bootstrap can grant
+final App and OBO access, sets required workspace permissions, and writes the
+current catalog and warehouse values to the selected GitHub Environment.
 
 ## 8. Load Current Workspace Values
 

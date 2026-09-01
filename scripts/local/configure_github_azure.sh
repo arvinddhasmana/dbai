@@ -15,6 +15,8 @@ Options:
   --repo OWNER/REPO       GitHub repository (default: current repository)
   --subscription-id ID    Azure subscription (default: current Azure subscription)
   --app-name NAME         Entra application display name (default: dbai-github-actions)
+  --client-id ID          Existing Entra application client ID (required when
+                          multiple apps have the same display name)
   --environments LIST     Comma-separated environments (default: dev,test,prod)
   --role NAME             Azure role at subscription scope (default: Contributor)
   --help                  Show this help
@@ -29,6 +31,7 @@ EOF
 repo=""
 subscription_id="${AZURE_SUBSCRIPTION_ID:-}"
 app_name="${DBAI_AZURE_APP_NAME:-dbai-github-actions}"
+client_id="${DBAI_AZURE_CLIENT_ID:-}"
 environments_csv="${DBAI_ENVIRONMENTS:-dev,test,prod}"
 role_name="${AZURE_ROLE_NAME:-Contributor}"
 
@@ -44,6 +47,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --app-name)
       app_name="$2"
+      shift 2
+      ;;
+    --client-id)
+      client_id="$2"
       shift 2
       ;;
     --environments)
@@ -103,9 +110,19 @@ subscription_scope="/subscriptions/${subscription_id}"
 issuer="https://token.actions.githubusercontent.com"
 audience="api://AzureADTokenExchange"
 
-app_id="${DBAI_AZURE_CLIENT_ID:-}"
+app_id="$client_id"
 if [[ -z "$app_id" ]]; then
-  app_id="$(az ad app list --display-name "$app_name" --query '[0].appId' --output tsv)"
+  mapfile -t matching_app_ids < <(
+    az ad app list --display-name "$app_name" --query '[].appId' --output tsv
+  )
+  if [[ "${#matching_app_ids[@]}" -gt 1 ]]; then
+    printf 'Multiple Entra applications have display name %s. Pass --client-id explicitly:\n' "$app_name" >&2
+    printf '  %s\n' "${matching_app_ids[@]}" >&2
+    exit 1
+  fi
+  if [[ "${#matching_app_ids[@]}" == 1 ]]; then
+    app_id="${matching_app_ids[0]}"
+  fi
 fi
 if [[ -z "$app_id" ]]; then
   app_id="$(az ad app create --display-name "$app_name" --query appId --output tsv)"

@@ -230,9 +230,19 @@ so those variables can be omitted when using the Bicep defaults.
 `DBAI_CATALOG`, `DATABRICKS_SQL_WAREHOUSE_ID`, and `DBAI_APP_USER` are required
 for the complete workload and bootstrap path.
 
+Use the same live Entra application client ID for both scripts. If more than
+one Entra application has the display name `dbai-github-actions`, pass it
+explicitly to the GitHub script with `--client-id <azure-client-id>`; the
+script will not guess between duplicate display names. The Databricks
+configuration script verifies that the supplied ID is a live Entra application
+before registering or assigning its Databricks service principal.
+
 Azure `Contributor` does not grant Databricks data-plane permissions. The
 manual environment script grants workspace access, SQL Warehouse access, and
-catalog/schema prerequisites in the selected workspace. Bootstrap preflights
+catalog/schema prerequisites in the selected workspace. It also grants the
+deployment service principal `MANAGE` on the isolated catalog so the
+non-interactive Bootstrap workflow can delegate final access to the App service
+principal and OBO user. Bootstrap preflights
 existing ingestion tables with `SELECT` and `MODIFY` for the job identity, then grants
 the configured App user and App service principal access to the Gold tables,
 search index table, search function, and AI Search endpoint. Bundle-created jobs

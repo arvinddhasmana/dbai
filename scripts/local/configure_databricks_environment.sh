@@ -173,6 +173,12 @@ if [[ -z "$subscription_id" ]]; then
 fi
 az account set --subscription "$subscription_id" --only-show-errors
 
+if ! az ad app show --id "$deployment_client_id" --query appId --output tsv >/dev/null 2>&1; then
+  printf 'Deployment client ID is not a live Entra application: %s\n' "$deployment_client_id" >&2
+  printf 'Use the same client ID as the GitHub Environment secret AZURE_CLIENT_ID.\n' >&2
+  exit 1
+fi
+
 resource_group="${DBAI_RESOURCE_GROUP:-rg-dbai-${environment_name}}"
 workspace_name="${DBAI_WORKSPACE_NAME:-dbai-${environment_name}}"
 if [[ -z "$warehouse_name" ]]; then
@@ -234,14 +240,25 @@ if [[ -z "$app_user" ]]; then
 fi
 printf 'App on-behalf-of user: %s\n' "$app_user"
 
-workspace_sp_json="$(databricks service-principals list --profile "$workspace_profile" --output json)"
-workspace_sp_id="$(jq -r --arg application_id "$deployment_client_id" '
-  (if type == "array" then . else (.Resources // .resources // []) end)
-  | map(select((.applicationId // .application_id // "") == $application_id))
-  | .[0].id // empty
-' <<< "$workspace_sp_json")"
+workspace_sp_json=""
+workspace_sp_id=""
+for attempt in {1..12}; do
+  workspace_sp_json="$(databricks service-principals list --profile "$workspace_profile" --output json)"
+  workspace_sp_id="$(jq -r --arg application_id "$deployment_client_id" '
+    (if type == "array" then . else (.Resources // .resources // []) end)
+    | map(select((.applicationId // .application_id // "") == $application_id))
+    | .[0].id // empty
+  ' <<< "$workspace_sp_json")"
+  if [[ -n "$workspace_sp_id" ]]; then
+    break
+  fi
+  if [[ "$attempt" -lt 12 ]]; then
+    printf 'Waiting for deployment service principal assignment to appear in workspace (%s/12).\n' "$attempt"
+    sleep 5
+  fi
+done
 if [[ -z "$workspace_sp_id" ]]; then
-  printf 'The deployment service principal is not visible in workspace %s.\n' "$workspace_host" >&2
+  printf 'The deployment service principal is still not visible in workspace %s after 60 seconds.\n' "$workspace_host" >&2
   printf 'Confirm the account assignment propagated and that --workspace-profile is a workspace administrator profile.\n' >&2
   exit 1
 fi
@@ -351,6 +368,7 @@ sql_statements="$(jq -cn \
    ($user | quote_identifier) as $quoted_user |
    [
      ("GRANT USE CATALOG ON CATALOG `" + $quoted_catalog + "` TO `" + $quoted_principal + "`"),
+     ("GRANT MANAGE ON CATALOG `" + $quoted_catalog + "` TO `" + $quoted_principal + "`"),
      ("GRANT CREATE SCHEMA ON CATALOG `" + $quoted_catalog + "` TO `" + $quoted_principal + "`"),
      ("CREATE SCHEMA IF NOT EXISTS `" + $quoted_catalog + "`.supply_chain"),
      ("GRANT USE SCHEMA ON SCHEMA `" + $quoted_catalog + "`.supply_chain TO `" + $quoted_principal + "`"),
