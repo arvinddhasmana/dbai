@@ -155,6 +155,7 @@ scripts/local/deploy_workload.sh
   --app-name "$DBAI_APP_NAME" \
   --user-principal "$DBAI_APP_USER" \
   --bootstrap-principal "$DBAI_APP_USER"
+scripts/local/deploy_app.sh
 
 printf '\nDeployment complete. Workspace: %s\n' "$workspace_url"
 printf 'SQL warehouse: %s\n' "$warehouse_id"

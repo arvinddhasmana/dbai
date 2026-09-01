@@ -324,8 +324,10 @@ stale.
 
 ## 10. Deploy the Workload
 
-The workload deployment updates the Bundle-managed jobs and deploys the full
-`app/` directory as a Databricks App revision.
+The workload deployment updates the Bundle-managed jobs and App resource, and
+uploads the full `app/` directory to the Bundle workspace path. It does not
+start or deploy the App revision yet because the AI Search index is created by
+Bootstrap.
 
 ### Local
 
@@ -347,7 +349,8 @@ scripts/local/deploy_workload.sh
 4. Run the workflow.
 
 The workload must be deployed before Bootstrap because the Bootstrap workflow
-uses `--skip-deploy`.
+uses `--skip-deploy`. The App is activated and its revision is deployed by
+Bootstrap after the data and AI Search objects exist.
 
 ## 11. Bootstrap Data and AI Search
 
@@ -363,6 +366,7 @@ python3 scripts/local/bootstrap_demo_environment.py \
   --skip-deploy \
   --app-name "dbai-${ENVIRONMENT}-supply-chain-agent" \
   --user-principal "$DBAI_APP_USER"
+scripts/local/deploy_app.sh
 ```
 
 ### GitHub Actions
@@ -374,7 +378,9 @@ python3 scripts/local/bootstrap_demo_environment.py \
 
 Bootstrap is idempotent for the demo data. It can be rerun after a failed job or
 when sample contracts change. Existing ingestion tables are preflighted with
-the required `SELECT` and `MODIFY` permissions for the job identity.
+the required `SELECT` and `MODIFY` permissions for the job identity. At the end
+of the bootstrap step, `scripts/local/deploy_app.sh` starts the App and deploys
+the current revision.
 
 ## 12. Synchronize and Validate AI Search
 

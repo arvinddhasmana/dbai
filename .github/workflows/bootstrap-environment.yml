@@ -93,3 +93,4 @@ jobs:
             --app-name "$DBAI_APP_NAME" \
             --user-principal "$DBAI_APP_USER" \
             --bootstrap-principal "$DBAI_BOOTSTRAP_PRINCIPAL"
+          scripts/local/deploy_app.sh

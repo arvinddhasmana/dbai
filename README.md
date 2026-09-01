@@ -241,28 +241,28 @@ and the App are owned by the deployment identity.
 `Deploy Infrastructure` runs `scripts/local/deploy_infrastructure.sh`.
 `Deploy Workload` logs in with `azure/login`, sets `DBAI_AUTH_MODE=azure-cli`,
 and runs `scripts/local/deploy_workload.sh` against the existing workspace. The
-workload script deploys the complete `app/` directory as an App revision after
-the Bundle resources are updated; do not select an individual Python file.
+workload script updates the Bundle-managed jobs and App resource, and uploads
+the complete `app/` directory to the Bundle workspace path; it does not start
+or deploy the App revision before the AI Search index exists.
 `Bootstrap Environment` uses the same OIDC session to run
-`scripts/local/bootstrap_demo_environment.py`. It grants the configured
-`DBAI_APP_USER` and App service principal after the data objects exist. The AI
-Search helper obtains its bearer token from the non-interactive Azure CLI
-session. No long-lived credential is stored in the repository.
+`scripts/local/bootstrap_demo_environment.py`. It creates the data and AI
+Search objects, grants the configured `DBAI_APP_USER` and App service
+principal, then runs `scripts/local/deploy_app.sh` to start the App and deploy
+the App revision. The AI Search helper obtains its bearer token from the
+non-interactive Azure CLI session. No long-lived credential is stored in the
+repository.
 
 The first-time order is **Deploy Infrastructure**, manual
 `configure_databricks_environment.sh`, **Deploy Workload**, and then
 **Bootstrap Environment**. Bootstrap uses `--skip-deploy`, so the workload must
-already be deployed.
+already be deployed. The App starts and deploys only after Bootstrap creates
+the data and AI Search objects.
 
-If an App was created before App revision deployment was added, deploy the
-Bundle-uploaded `app/` directory manually. From the workspace path shown by
-`databricks bundle summary -t dev`, run:
+If an App was created before App revision deployment was added, activate it
+after Bootstrap with the same helper used by the workflow:
 
 ```bash
-databricks apps deploy dbai-dev-supply-chain-agent \
-  --source-code-path /Workspace/Users/<deployment-user>/.bundle/dbai/dev/files/app \
-  --skip-validation \
-  --auto-approve
+scripts/local/deploy_app.sh
 ```
 
 Keep the federated credential subject restricted to the intended GitHub

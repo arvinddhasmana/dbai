@@ -69,6 +69,7 @@ case "$auth_mode" in
 esac
 
 databricks current-user me --output json >/dev/null
+existing_app_name="dbai-${target}-supply-chain-agent"
 databricks bundle validate -t "$target"
 bundle_deploy_args=(
   bundle deploy
@@ -79,7 +80,6 @@ bundle_deploy_args=(
   "--var=ai_search_endpoint=${AI_SEARCH_ENDPOINT:-globalmart-supply-chain-search}"
 )
 if ! databricks "${bundle_deploy_args[@]}"; then
-  existing_app_name="dbai-${target}-supply-chain-agent"
   if databricks apps get "$existing_app_name" --output json >/dev/null 2>&1; then
     printf 'Binding existing App after Bundle state recovery: %s\n' "$existing_app_name"
     databricks bundle deployment bind supply_chain_agent "$existing_app_name" \
@@ -92,37 +92,8 @@ if ! databricks "${bundle_deploy_args[@]}"; then
 fi
 
 bundle_summary="$(databricks bundle summary -t "$target" --output json)"
-app_name="$(jq -r '.resources.apps.supply_chain_agent.name // empty' <<< "$bundle_summary")"
-app_source_path="$(jq -r '.resources.apps.supply_chain_agent.source_code_path // empty' <<< "$bundle_summary")"
-if [[ -z "$app_name" || -z "$app_source_path" ]]; then
-  printf '%s\n' 'Bundle summary did not contain the supply_chain_agent App name and Workspace Files source path.' >&2
+if [[ -z "$(jq -r '.resources.apps.supply_chain_agent.name // empty' <<< "$bundle_summary")" ]]; then
+  printf '%s\n' 'Bundle summary did not contain the supply_chain_agent App.' >&2
   exit 1
 fi
-
-app_config_file="$(mktemp)"
-trap 'rm -f "$app_config_file"' EXIT
-printf '%s\n' \
-  'command: ["uv", "run", "start-server"]' \
-  'env:' \
-  '  - name: MLFLOW_TRACKING_URI' \
-  '    value: "databricks"' \
-  '  - name: MLFLOW_REGISTRY_URI' \
-  '    value: "databricks-uc"' \
-  '  - name: MODEL_ENDPOINT' \
-  "    value: \"${MODEL_ENDPOINT:-databricks-llama-4-maverick}\"" \
-  '  - name: DATABRICKS_SQL_WAREHOUSE_ID' \
-  "    value: \"${warehouse_id}\"" \
-  '  - name: DBAI_CATALOG' \
-  "    value: \"${catalog_name}\"" > "$app_config_file"
-databricks workspace import "$app_source_path/app.yaml" \
-  --file "$app_config_file" \
-  --format AUTO \
-  --overwrite \
-  --output text >/dev/null
-
-databricks apps deploy "$app_name" \
-  --source-code-path "$app_source_path" \
-  --skip-validation \
-  --auto-approve
-
-printf 'Workload and App deployed. Bundle target: %s\n' "$target"
+printf 'Bundle workload deployed. App activation is performed by Bootstrap Environment after AI Search setup. Target: %s\n' "$target"
