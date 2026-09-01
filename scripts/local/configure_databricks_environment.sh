@@ -49,7 +49,9 @@ deployment_client_id="${DBAI_DEPLOYMENT_CLIENT_ID:-16f08498-e32f-4650-9cfe-09ef6
 account_profile="${DATABRICKS_ACCOUNT_PROFILE:-account-admin}"
 workspace_profile="${DATABRICKS_WORKSPACE_PROFILE:-${DATABRICKS_CONFIG_PROFILE:-}}"
 catalog_override="${DBAI_CATALOG:-}"
+catalog_override_argument=false
 warehouse_id="${DATABRICKS_SQL_WAREHOUSE_ID:-}"
+warehouse_id_argument=false
 warehouse_name="${DBAI_SQL_WAREHOUSE_NAME:-}"
 app_user="${DBAI_APP_USER:-}"
 model_endpoint="${MODEL_ENDPOINT:-databricks-llama-4-maverick}"
@@ -85,10 +87,12 @@ while [[ $# -gt 0 ]]; do
       ;;
     --catalog)
       catalog_override="$2"
+      catalog_override_argument=true
       shift 2
       ;;
     --warehouse-id)
       warehouse_id="$2"
+      warehouse_id_argument=true
       shift 2
       ;;
     --warehouse-name)
@@ -259,6 +263,19 @@ done
 printf 'Workspace entitlements verified for deployment service principal.\n'
 
 catalog_name="$catalog_override"
+if [[ -n "$catalog_name" ]]; then
+  existing_catalog_json="$(databricks catalogs get "$catalog_name" \
+    --profile "$workspace_profile" \
+    --output json 2>/dev/null || true)"
+  if [[ -z "$(jq -r '.name // empty' <<< "$existing_catalog_json")" ]]; then
+    if [[ "$catalog_override_argument" == true ]]; then
+      printf 'Unity Catalog does not exist or is not accessible in workspace %s: %s\n' "$workspace_host" "$catalog_name" >&2
+      exit 1
+    fi
+    printf 'Ignoring stale Unity Catalog and rediscovering the current workspace catalog: %s\n' "$catalog_name"
+    catalog_name=""
+  fi
+fi
 if [[ -z "$catalog_name" ]]; then
   catalogs_json="$(databricks catalogs list --profile "$workspace_profile" --output json)"
   catalog_name="$(jq -r --arg prefix "dbai_${environment_name}" '
@@ -273,6 +290,19 @@ if [[ -z "$catalog_name" ]]; then
 fi
 printf 'Using Unity Catalog: %s\n' "$catalog_name"
 
+if [[ -n "$warehouse_id" ]]; then
+  existing_warehouse_json="$(databricks warehouses get "$warehouse_id" \
+    --profile "$workspace_profile" \
+    --output json 2>/dev/null || true)"
+  if [[ -z "$(jq -r '.id // .warehouse_id // empty' <<< "$existing_warehouse_json")" ]]; then
+    if [[ "$warehouse_id_argument" == true ]]; then
+      printf 'SQL Warehouse does not exist in workspace %s: %s\n' "$workspace_host" "$warehouse_id" >&2
+      exit 1
+    fi
+    printf 'Ignoring stale SQL Warehouse ID and rediscovering %s: %s\n' "$warehouse_name" "$warehouse_id"
+    warehouse_id=""
+  fi
+fi
 if [[ -z "$warehouse_id" ]]; then
   warehouses_json="$(databricks warehouses list --profile "$workspace_profile" --output json)"
   warehouse_id="$(jq -r --arg name "$warehouse_name" '
@@ -315,22 +345,24 @@ sql_statements="$(jq -cn \
   --arg catalog "$catalog_name" \
   --arg principal "$deployment_client_id" \
   --arg user "$app_user" \
-  '[
-    ("GRANT USE CATALOG ON CATALOG `" + $catalog + "` TO `" + $principal + "`"),
-    ("GRANT CREATE SCHEMA ON CATALOG `" + $catalog + "` TO `" + $principal + "`"),
-    ("CREATE SCHEMA IF NOT EXISTS `" + $catalog + "`.supply_chain"),
-    ("GRANT USE SCHEMA ON SCHEMA `" + $catalog + "`.supply_chain TO `" + $principal + "`"),
-    ("GRANT CREATE TABLE ON SCHEMA `" + $catalog + "`.supply_chain TO `" + $principal + "`"),
-    ("GRANT CREATE VOLUME ON SCHEMA `" + $catalog + "`.supply_chain TO `" + $principal + "`"),
-    ("GRANT CREATE FUNCTION ON SCHEMA `" + $catalog + "`.supply_chain TO `" + $principal + "`"),
-    ("CREATE VOLUME IF NOT EXISTS `" + $catalog + "`.supply_chain.vendor_contracts"),
-    ("GRANT READ VOLUME, WRITE VOLUME ON VOLUME `" + $catalog + "`.supply_chain.vendor_contracts TO `" + $principal + "`")
-  ] + [
-    ("GRANT USE CATALOG ON CATALOG `" + $catalog + "` TO `" + ($user | gsub("`"; "``")) + "`"),
-    ("GRANT USE SCHEMA ON SCHEMA `" + $catalog + "`.supply_chain TO `" + ($user | gsub("`"; "``")) + "`")
-    ("GRANT USE SCHEMA ON SCHEMA `" + ($catalog | gsub("`"; "``")) + "`.supply_chain TO `" + ($user | gsub("`"; "``")) + "`"),
-    ("GRANT CREATE TABLE ON SCHEMA `" + ($catalog | gsub("`"; "``")) + "`.supply_chain TO `" + ($user | gsub("`"; "``")) + "`")
-  ]')"
+  'def quote_identifier: gsub("`"; "``");
+   ($catalog | quote_identifier) as $quoted_catalog |
+   ($principal | quote_identifier) as $quoted_principal |
+   ($user | quote_identifier) as $quoted_user |
+   [
+     ("GRANT USE CATALOG ON CATALOG `" + $quoted_catalog + "` TO `" + $quoted_principal + "`"),
+     ("GRANT CREATE SCHEMA ON CATALOG `" + $quoted_catalog + "` TO `" + $quoted_principal + "`"),
+     ("CREATE SCHEMA IF NOT EXISTS `" + $quoted_catalog + "`.supply_chain"),
+     ("GRANT USE SCHEMA ON SCHEMA `" + $quoted_catalog + "`.supply_chain TO `" + $quoted_principal + "`"),
+     ("GRANT CREATE TABLE ON SCHEMA `" + $quoted_catalog + "`.supply_chain TO `" + $quoted_principal + "`"),
+     ("GRANT CREATE VOLUME ON SCHEMA `" + $quoted_catalog + "`.supply_chain TO `" + $quoted_principal + "`"),
+     ("GRANT CREATE FUNCTION ON SCHEMA `" + $quoted_catalog + "`.supply_chain TO `" + $quoted_principal + "`"),
+     ("CREATE VOLUME IF NOT EXISTS `" + $quoted_catalog + "`.supply_chain.vendor_contracts"),
+     ("GRANT READ VOLUME, WRITE VOLUME ON VOLUME `" + $quoted_catalog + "`.supply_chain.vendor_contracts TO `" + $quoted_principal + "`"),
+     ("GRANT USE CATALOG ON CATALOG `" + $quoted_catalog + "` TO `" + $quoted_user + "`"),
+     ("GRANT USE SCHEMA ON SCHEMA `" + $quoted_catalog + "`.supply_chain TO `" + $quoted_user + "`"),
+     ("GRANT CREATE TABLE ON SCHEMA `" + $quoted_catalog + "`.supply_chain TO `" + $quoted_user + "`")
+   ]')"
 export DBAI_SQL_STATEMENTS="$sql_statements"
 export DBAI_SQL_WAREHOUSE_ID="$warehouse_id"
 "$python_bin" - <<'PY'
