@@ -623,6 +623,11 @@ Azure deletion. Use it when the old workspace is still reachable:
 scripts/local/destroy_demo_environment.sh --yes
 ```
 
+The teardown deletes only the deployment-owned primary and Databricks managed
+resource groups. Azure platform resource groups, including `NetworkWatcherRG`,
+are intentionally preserved because they may be shared by other resources in
+the subscription.
+
 If the resource group was already deleted manually, delete the deployment-owned
 managed resource group only after confirming that it belongs to this
 environment:

@@ -150,6 +150,7 @@ fi
 
 printf 'Azure resources for environment %s destroyed. Only deployment-owned rg-dbai-* resource groups were targeted.\n' \
   "$environment_name"
+printf '%s\n' 'Preserved Azure platform resource group: NetworkWatcherRG.'
 
 if [[ "$cleanup_local_config" == true ]]; then
   scripts/local/cleanup_local_databricks.sh \

@@ -168,6 +168,8 @@ or reloading demo data. `Deploy Infrastructure` is run once for each of `dev`,
 target GitHub Environment and enter `DESTROY` exactly in the confirmation
 field. It uses the environment's OIDC credentials and only targets the
 deployment-owned resource groups validated by the teardown script.
+Azure platform resource groups such as `NetworkWatcherRG` are intentionally
+preserved.
 
 All workflows use GitHub OIDC with an Entra service principal. They do
 not use a Databricks personal access token or a browser login.
