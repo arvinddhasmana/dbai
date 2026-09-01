@@ -6,7 +6,12 @@ This document describes the deployed Azure Databricks Premium architecture for t
 
 The implementation uses one contract dataset: `vendor_contract_chunks_index_source`, a regular Delta table written by a serverless batch refresh job and consumed by the managed AI Search index. The earlier Lakeflow pipeline and duplicate outputs were removed because this workspace does not accept Streaming Tables or Materialized Views as AI Search sources.
 
-The selected conversational architecture is a Custom Databricks App. It provides the user interface and explicitly orchestrates structured SQL, AI Search retrieval, and grounded answer generation.
+The deployed design supports three complementary conversational experiences:
+Databricks Genie for SQL-first exploration, a custom Agent Framework agent for
+explicit SQL and retrieval orchestration, and a Databricks App that hosts that
+custom agent behind a dedicated user interface. Genie and the custom agent use
+the same governed data foundation but have different interaction and control
+boundaries.
 
 ## 2. Architecture Options
 
@@ -18,23 +23,157 @@ The selected conversational architecture is a Custom Databricks App. It provides
 
 Genie is the least expensive proof of concept when its semantic layer can call the required search function. A search UDF can be a platform dependency and may be awkward for returning ranked chunks, applying filters, and exposing citations. Agent Framework makes tool selection, SQL safety, retrieval, grounding, and observability explicit.
 
-## 3. Selected Architecture: Custom Databricks App
+## 3. Three Conversational Experiences
 
-The app is a thin conversational product layer over Databricks services:
+The system does not select one conversational architecture. It exposes the
+same business domain through three complementary paths:
 
-1. The user submits a natural-language supply-chain question to the App.
-2. The App's AgentServer classifies the request as structured, contract-oriented, or hybrid.
-3. The SQL tool generates and validates read-only SQL, then executes it against the SQL Warehouse.
-4. The AI Search tool queries `vendor_contract_chunks_index_rebuilt` with vendor, tier, or region filters when available.
-5. The agent combines returned facts and contract evidence into one answer with source-file and chunk citations.
-6. The app renders the answer, citations, and a concise evidence trace.
+| Experience | Implementation | Primary interaction | Strength |
+|---|---|---|---|
+| Genie Agent | Databricks Genie space over Unity Catalog tables and `search_vendor_contracts` | User asks questions in the Genie UI | Fast SQL-first analysis with a managed conversational experience |
+| Custom Agent | Agent Framework orchestration in `app/agent_server/agent.py`, with governed tools in `data_tools.py` and SQL validation in `sql_guard.py` | User asks questions through the App, or the agent is invoked through its hosting boundary | Explicit routing, read-only SQL, retrieval grounding, and citations |
+| Databricks App | Databricks App serving the MLflow AgentServer and the UI in `app/static/index.html` | User interacts with a dedicated chat application | Branded interaction, conversation state, evidence presentation, and application controls |
 
-The App is both the interface and AgentServer hosting boundary; Agent Framework
-is the reasoning and orchestration layer. The SQL Warehouse, Delta tables,
-Volume, AI Search endpoint, embedding endpoint, and managed index remain
-platform services rather than app-owned data stores.
+The custom agent and Databricks App are one deployed product boundary: the App
+hosts the custom agent. They are listed separately because the agent is the
+reasoning implementation while the App is the user-facing runtime and delivery
+surface. There is no second independent custom-agent data store.
 
-The app should enforce read-only SQL, allow-list the three demo tables, cap result sizes, pass user identity to Databricks tools, and return a transparent fallback when SQL or retrieval is unavailable.
+### Shared data and control plane
+
+All three experiences use the same governed resources:
+
+- Unity Catalog Gold tables provide structured inventory and vendor facts.
+- The contract Volume is the source for the batch refresh job.
+- `vendor_contract_chunks_index_source` is the regular Delta source for AI Search.
+- `vendor_contract_chunks_index_rebuilt` serves active contract chunks.
+- `search_vendor_contracts` exposes bounded retrieval to Genie and SQL clients.
+- SQL Warehouse, Unity Catalog permissions, row filters, and column masks remain
+    enforcement points rather than prompt instructions.
+- The model-serving endpoint generates answers for the custom agent; Genie uses
+    its managed semantic and model experience.
+
+The custom agent follows this path:
+
+1. The user submits a natural-language question through the Databricks App.
+2. `agent.py` routes the question to structured SQL, contract retrieval, or both.
+3. `data_tools.py` executes allow-listed read-only SQL or queries the managed
+     AI Search index with optional vendor, tier, and region filters.
+4. `sql_guard.py` rejects disallowed SQL before the SQL Warehouse is called.
+5. The model combines governed facts and retrieved evidence, then returns
+     citations and a grounded answer to the App UI.
+
+The Genie path uses the same tables and retrieval function through the Genie
+semantic layer. The App path adds explicit orchestration and user-visible
+evidence handling; neither path bypasses Unity Catalog or endpoint permissions.
+
+## 4. Experience Overview
+
+The following view shows how the three experiences are implemented around the
+shared platform resources:
+
+```mermaid
+flowchart LR
+    User[Operations or procurement user]
+    Genie[Genie Agent\nManaged Genie space]
+    App[Databricks App\nUI and MLflow AgentServer]
+    Custom[Custom Agent\nAgent Framework orchestration]
+    SQL[SQL Warehouse]
+    Gold[(Unity Catalog Gold tables)]
+    Volume[(Contract Volume)]
+    Refresh[Contract refresh job]
+    Source[(Regular Delta source table)]
+    Search[AI Search index]
+    Function[search_vendor_contracts\nSQL table-valued function]
+    Model[Model Serving endpoint]
+
+    User -->|SQL-first questions| Genie
+    User -->|Structured, contract, or hybrid questions| App
+    App --> Custom
+    Genie -->|Semantic layer and SQL| SQL
+    Genie -->|Contract retrieval function| Function
+    Custom -->|Read-only SQL tool| SQL
+    Custom -->|Retrieval tool| Search
+    Custom -->|Answer generation| Model
+    SQL --> Gold
+    Function --> Search
+    Volume --> Refresh --> Source --> Search
+    Search -->|Indexed contract evidence| Function
+```
+
+The user can choose Genie for managed SQL-first exploration or the App for
+custom orchestration and a dedicated interface. The custom agent is not a
+separate user interface: it is hosted by the App and calls the same SQL,
+function, and search resources.
+
+The two request paths have different control points:
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor User
+    participant Genie as Genie Agent
+    participant App as Databricks App
+    participant Agent as Custom Agent
+    participant SQL as SQL Warehouse
+    participant Function as search_vendor_contracts
+    participant Search as AI Search index
+    participant Model as Model Serving
+
+    alt Managed Genie path
+        User->>Genie: Ask SQL or contract question
+        Genie->>SQL: Generate governed SQL
+        SQL-->>Genie: Structured facts
+        opt Contract question
+            Genie->>Function: Call retrieval function
+            Function->>Search: Hybrid search with filters
+            Search-->>Function: Active contract chunks
+            Function-->>Genie: Bounded evidence and scores
+        end
+        Genie-->>User: Conversational answer
+    else Custom App path
+        User->>App: Submit structured, contract, or hybrid question
+        App->>Agent: Forward question and conversation
+        Agent->>Agent: Route to one or both tools
+        Agent->>SQL: Execute allow-listed read-only query
+        SQL-->>Agent: Structured facts
+        opt Contract question
+            Agent->>Search: Retrieve active chunks with filters
+            Search-->>Agent: Contract evidence
+        end
+        Agent->>Model: Generate grounded response
+        Model-->>Agent: Answer and citations
+        Agent-->>App: Renderable response
+        App-->>User: Answer, evidence, and citations
+    end
+```
+
+## 5. System Context, C4 Level 1
+
+```mermaid
+C4Context
+    title GlobalMart Supply Chain Intelligence Demo - System Context
+
+    Person(operations, "Operations Manager", "Investigates delayed inventory and vendor performance")
+    Person(procurement, "Procurement Manager", "Reviews contract terms, penalties, and vendor obligations")
+    System(genie, "Databricks Genie Agent", "Managed SQL-first conversational analysis")
+    System(app, "Custom Databricks Supply Chain App", "Dedicated UI hosting the custom Agent Framework agent")
+    System_Ext(databricks, "Azure Databricks Premium", "Runs Delta tables, serverless jobs, model serving, and SQL")
+    System_Ext(aisearch, "Databricks AI Search", "Indexes and retrieves contract chunks")
+    System_Ext(volume, "Unity Catalog Volume", "Stores vendor contract files")
+    System_Ext(model, "Databricks Model Serving", "Agent and answer generation")
+
+    Rel(operations, genie, "Asks SQL-first inventory questions")
+    Rel(procurement, genie, "Asks governed vendor questions")
+    Rel(operations, app, "Asks structured or mixed questions")
+    Rel(procurement, app, "Asks grounded contract questions")
+    Rel(genie, databricks, "Uses semantic layer and SQL")
+    Rel(app, databricks, "Uses custom-agent tools")
+    Rel(app, aisearch, "Performs semantic retrieval")
+    Rel(app, model, "Generates grounded answers")
+    Rel(databricks, volume, "Reads source contracts")
+    Rel(aisearch, databricks, "Syncs from Delta source")
+```
 
 Deployment compatibility is checked by
 `scripts/local/validate_demo_workspace.py` before AI Search provisioning. It verifies
@@ -44,30 +183,7 @@ filters, column masks, and privileges remain workspace governance controls and
 must not be inferred from the agent prompt. AI Search authorization requires a
 separate design because the managed index is a serving copy of the source.
 
-## 4. System Context, C4 Level 1
-
-```mermaid
-C4Context
-    title GlobalMart Supply Chain Intelligence Demo - System Context
-
-    Person(operations, "Operations Manager", "Investigates delayed inventory and vendor performance")
-    Person(procurement, "Procurement Manager", "Reviews contract terms, penalties, and vendor obligations")
-    System(demo, "Custom Databricks Supply Chain App", "Conversational SQL and contract retrieval")
-    System_Ext(databricks, "Azure Databricks Premium", "Runs Delta tables, serverless jobs, model serving, and SQL")
-    System_Ext(aisearch, "Databricks AI Search", "Indexes and retrieves contract chunks")
-    System_Ext(volume, "Unity Catalog Volume", "Stores vendor contract files")
-    System_Ext(model, "Databricks Model Serving", "Agent and answer generation")
-
-    Rel(operations, demo, "Asks inventory and delay questions")
-    Rel(procurement, demo, "Asks contract and liability questions")
-    Rel(demo, databricks, "Runs SQL and orchestration")
-    Rel(demo, aisearch, "Performs semantic retrieval")
-    Rel(demo, model, "Orchestrates tools and generates answers")
-    Rel(databricks, volume, "Reads source contracts")
-    Rel(aisearch, databricks, "Syncs from Delta source")
-```
-
-## 5. Container Diagram, C4 Level 2
+## 6. Container Diagram, C4 Level 2
 
 ```mermaid
 C4Container
@@ -103,7 +219,7 @@ C4Container
     Rel(index, model, "Creates embeddings")
 ```
 
-## 4. Component Diagram, C4 Level 3
+## 7. Component Diagram, C4 Level 3
 
 ```mermaid
 C4Component
@@ -130,7 +246,7 @@ C4Component
     Rel(writer, delta, "Saves rows")
 ```
 
-## 7. Data Flow
+## 8. Data Flow
 
 ```mermaid
 flowchart LR
@@ -151,7 +267,7 @@ flowchart LR
     N --> O[Managed AI Search index]
 ```
 
-## 8. Structured Analytics Flow
+## 9. Structured Analytics Flow
 
 ```mermaid
 flowchart LR
@@ -165,7 +281,7 @@ flowchart LR
     E --> G[Vendor and account-manager analysis]
 ```
 
-## 9. Key Contracts and Names
+## 10. Key Contracts and Names
 
 | Resource | Value |
 |---|---|
@@ -184,7 +300,7 @@ flowchart LR
 | Window step | 450 tokens |
 | Overlap | 50 tokens |
 
-## 10. Operational Design
+## 11. Operational Design
 
 The structured data job is an explicit serverless notebook run. The contract source refresh is also an explicit serverless notebook run because it performs a batch overwrite of the regular Delta source. The AI Search index is triggered separately after the source table refresh completes.
 

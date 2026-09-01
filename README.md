@@ -157,13 +157,19 @@ Deployment is intentionally split into separate lifecycles:
 | [`Deploy Infrastructure`](.github/workflows/deploy-infrastructure.yml) | Manual | Azure resource groups and Databricks workspaces |
 | [`Deploy Workload`](.github/workflows/deploy-workload.yml) | Workload changes on `main`, or manual | Databricks App, jobs, and Bundle resources |
 | [`Bootstrap Environment`](.github/workflows/bootstrap-environment.yml) | Manual | Catalog objects, sample data, contract chunks, AI Search, and Genie SQL function |
+| [`Destroy Environment`](.github/workflows/destroy-environment.yml) | Manual with confirmation | Databricks data, App, jobs, and deployment-owned Azure resource groups |
 
 `Deploy Workload` does not run Bicep or bootstrap data. This keeps normal SDLC
 releases fast and prevents an application change from recreating infrastructure
 or reloading demo data. `Deploy Infrastructure` is run once for each of `dev`,
 `test`, and `prod`, and again only when Azure infrastructure changes.
 
-All three workflows use GitHub OIDC with an Entra service principal. They do
+`Destroy Environment` is a manually triggered destructive workflow. Select the
+target GitHub Environment and enter `DESTROY` exactly in the confirmation
+field. It uses the environment's OIDC credentials and only targets the
+deployment-owned resource groups validated by the teardown script.
+
+All workflows use GitHub OIDC with an Entra service principal. They do
 not use a Databricks personal access token or a browser login.
 
 Complete the Azure and GitHub setup from an administrator terminal. The script
@@ -358,4 +364,5 @@ python3 scripts/local/validate_demo_workspace.py \
 - [Technical architecture](docs/02-technical-architecture-c4.md)
 - [Technical execution walkthrough](docs/03-technical-execution-walkthrough.md)
 - [Contract change demo](docs/05-contract-change-demo.md)
-- [Deployment compatibility and agent review](docs/06-deployment-compatibility-and-agent-review.md)
+- [Start To End Setup](docs/Start%20To%20End%20Setup.md)
+- [Local script process map](docs/07-local-script-process-map.md)

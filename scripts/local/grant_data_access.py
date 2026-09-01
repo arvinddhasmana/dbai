@@ -18,6 +18,10 @@ TABLES = (
     "dim_products",
     "dim_vendors",
     "fact_inventory_status",
+    "contract_file_events_bronze",
+    "contract_file_manifest",
+    "contract_documents_silver",
+    "vendor_contract_chunks_index_source",
     "vendor_contract_chunks_index_rebuilt",
 )
 BOOTSTRAP_TABLES = (
@@ -166,25 +170,38 @@ def grant_data_access(
     for principal in principals:
         grant_sql_access(client, catalog, principal, warehouse_id)
 
-    if app_principal:
+    if app_principal or user_principal:
         try:
             endpoint = client.vector_search_endpoints.get_endpoint(ai_search_endpoint)
         except NotFound:
             print(
-                "AI Search endpoint not found; skipped App endpoint access: "
+                "AI Search endpoint not found; skipped endpoint access: "
                 f"{ai_search_endpoint}"
             )
         else:
-            client.vector_search_endpoints.update_permissions(
-                endpoint.id,
-                access_control_list=[
+            access_control_list = []
+            if app_principal:
+                access_control_list.append(
                     VectorSearchEndpointAccessControlRequest(
                         service_principal_name=app_principal,
                         permission_level=VectorSearchEndpointPermissionLevel.CAN_USE,
                     )
-                ],
+                )
+            if user_principal:
+                access_control_list.append(
+                    VectorSearchEndpointAccessControlRequest(
+                        user_name=user_principal,
+                        permission_level=VectorSearchEndpointPermissionLevel.CAN_USE,
+                    )
+                )
+            client.vector_search_endpoints.update_permissions(
+                endpoint.id,
+                access_control_list=access_control_list,
             )
-            print(f"Granted App CAN_USE on AI Search endpoint: {ai_search_endpoint}")
+            print(
+                "Granted CAN_USE on AI Search endpoint for App and OBO user: "
+                f"{ai_search_endpoint}"
+            )
 
 
 def parse_args():

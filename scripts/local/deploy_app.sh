@@ -14,6 +14,16 @@ catalog_name="${DBAI_CATALOG:?Set DBAI_CATALOG to the existing Unity Catalog cat
 warehouse_id="${DATABRICKS_SQL_WAREHOUSE_ID:?Set DATABRICKS_SQL_WAREHOUSE_ID to the existing SQL Warehouse ID.}"
 app_name="${DBAI_APP_NAME:-dbai-${target}-supply-chain-agent}"
 
+workspace_host="${DATABRICKS_HOST:-}"
+if [[ -z "$workspace_host" && -n "${DATABRICKS_CONFIG_PROFILE:-}" ]]; then
+  workspace_host="$(databricks auth describe \
+    --profile "$DATABRICKS_CONFIG_PROFILE" \
+    --output json | jq -r '.details.host // empty')"
+fi
+if [[ "$workspace_host" =~ adb-([0-9]+)\. ]]; then
+  export DATABRICKS_WORKSPACE_ID="${BASH_REMATCH[1]}"
+fi
+
 ensure_app_running() {
   local app_json compute_state attempt
 

@@ -1,11 +1,11 @@
 # GlobalMart Technical Execution Walkthrough
 
-## 1. Deployment and Runtime Sequence
+## 1. Implementation Runtime Sequence
 
 ```mermaid
 sequenceDiagram
     autonumber
-    actor User
+    actor Developer
     participant CLI as Databricks CLI
     participant Bundle as Databricks Bundle
     participant Job as Serverless Refresh Job
@@ -14,10 +14,10 @@ sequenceDiagram
     participant Index as AI Search Index
     participant Embed as Embedding Endpoint
 
-    User->>CLI: databricks bundle deploy -t dev
+    Developer->>CLI: Deploy Bundle target dev
     CLI->>Bundle: Upload source files and resource definitions
     Bundle-->>CLI: Deployment completed
-    User->>CLI: databricks bundle run refresh_vendor_contract_chunks -t dev
+    Developer->>CLI: Run refresh job
     CLI->>Job: Start notebook task
     Job->>Volume: Read binary contract files
     Volume-->>Job: path, content, length, modificationTime
@@ -27,79 +27,39 @@ sequenceDiagram
     Job->>Job: Add vendor metadata and chunk_id
     Job->>Delta: Incrementally update [GOLD] index source table
     Delta-->>Job: Write succeeded
-    User->>Index: Trigger sync
+    Developer->>Index: Trigger sync
     Index->>Delta: Read changed source rows
     Index->>Embed: Generate embeddings from chunk_text
     Embed-->>Index: Embedding vectors
-    Index-->>User: Online and update Completed
+    Index-->>Developer: Online and update Completed
 ```
 
-## 2. Step 1: Bootstrap Or Bundle Configuration
+## 2. Developer Ownership And Script Orchestration
 
-`databricks.yml` defines the bundle name, source synchronization, and Azure Databricks development target. `resources/dbai.resources.yml` defines the three serverless jobs. The former Lakeflow pipeline was removed because its Streaming Table and Materialized View outputs were not compatible with this workspace's AI Search source requirements.
+`databricks.yml` defines the Bundle target and source synchronization.
+`resources/dbai.resources.yml` defines the serverless jobs. The Bundle deploys
+the App and jobs; it does not by itself populate tables, synchronize AI Search,
+or configure the Genie function.
 
-Run:
+The local scripts divide those responsibilities into explicit boundaries:
 
-```bash
-export DATABRICKS_CONFIG_PROFILE=aiarchitect
-databricks bundle validate -t dev
-databricks bundle deploy -t dev
-```
+| Boundary | Owning implementation | Developer concern |
+|---|---|---|
+| Azure infrastructure | `infra/main.bicep`, `scripts/local/deploy_infrastructure.sh` | Create the workspace and deployment-owned Azure resources. |
+| Identity and administrator setup | `scripts/local/configure_github_azure.sh`, `scripts/local/configure_databricks_environment.sh` | Establish OIDC, service-principal access, catalog, warehouse, and bootstrap permissions. |
+| Bundle workload | `scripts/local/deploy_workload.sh`, `databricks.yml`, `resources/dbai.resources.yml` | Validate and deploy the App and serverless jobs. |
+| Data-plane bootstrap | `scripts/local/bootstrap_demo_environment.py` | Create or verify data objects, run data jobs, upload baseline files, validate compatibility, provision AI Search, create the Genie function, and grant runtime access. |
+| Shared clients and constants | `scripts/local/demo_environment.py` | Centralize catalog, table, Volume, index, endpoint, authentication, SQL, and file-operation helpers used by local workflows. |
+| App activation | `scripts/local/deploy_app.sh`, `app/` | Start the deployed App and publish its current revision after the agent resources are ready. |
+| Readiness and recovery | `scripts/local/validate_demo_workspace.py`, `scripts/local/create_vendor_contract_index.py`, `scripts/local/grant_data_access.py` | Check source compatibility and repair index or permission state without rerunning the complete bootstrap. |
+| Lifecycle demo | `scripts/local/run_contract_change_demo.py` | Mutate controlled Volume files and invoke the incremental refresh and vendor upsert jobs. |
+| Teardown | `scripts/local/destroy_demo_environment.py`, `scripts/local/destroy_demo_environment.sh`, `scripts/local/cleanup_local_databricks.sh` | Remove Databricks objects, Azure resources, or local CLI state according to the selected scope. |
 
-What happens:
+The complete process map, including all local entry points and command
+sequences, is in [Local Script Process Map](07-local-script-process-map.md).
+The canonical setup and recovery procedure is in [Start To End Setup](Start%20To%20End%20Setup.md).
 
-1. YAML is validated against the Databricks bundle schema.
-2. `scripts/deployable/**` is uploaded to the bundle workspace path.
-3. Jobs and pipeline definitions are created or updated.
-4. No contract data is changed by deployment alone.
-
-For a disposable Azure workspace, the control-plane and data-plane sequence is
-orchestrated by:
-
-```bash
-scripts/local/deploy_demo_environment.sh
-```
-
-This creates `rg-dbai-demo` and the Premium Databricks workspace through
-`infra/main.bicep`, obtains the workspace URL into `DATABRICKS_HOST`, creates
-or reuses the named serverless SQL warehouse, and then runs the Bundle and
-bootstrap workflow. The script accepts `AZURE_SUBSCRIPTION_ID`,
-`AZURE_LOCATION`, `DBAI_ENVIRONMENT`, `DATABRICKS_CONFIG_PROFILE`, and
-`DATABRICKS_SQL_WAREHOUSE_ID` overrides.
-
-For an existing workspace, set `DATABRICKS_CONFIG_PROFILE` and
-`DATABRICKS_SQL_WAREHOUSE_ID`, then run:
-
-```bash
-/opt/az/bin/python3 scripts/local/bootstrap_demo_environment.py
-```
-
-Bootstrap creates the catalog/schema/Volume, deploys and runs the jobs, uploads
-the baseline contracts, provisions AI Search, and creates the Genie function.
-The triggered index still requires a manual sync. The matching data-plane
-teardown is:
-
-```bash
-/opt/az/bin/python3 scripts/local/destroy_demo_environment.py --dry-run
-/opt/az/bin/python3 scripts/local/destroy_demo_environment.py --yes
-```
-
-For the Azure-created disposable environment, use the wrapper instead. It
-previews safely and deletes the workspace only after Databricks cleanup
-succeeds:
-
-```bash
-scripts/local/destroy_demo_environment.sh --yes --dry-run
-scripts/local/destroy_demo_environment.sh --yes
-```
-
-## 3. Step 2: Structured Data Generation
-
-Run:
-
-```bash
-databricks bundle run generate_mock_data -t dev
-```
+## 3. Structured Data Implementation
 
 The notebook creates three Delta tables in `globalmart.supply_chain`:
 
@@ -109,7 +69,7 @@ The notebook creates three Delta tables in `globalmart.supply_chain`:
 
 The notebook uses overwrite mode with schema replacement. This makes the demo repeatable, but it should be replaced with an incremental production ingestion pattern for live data.
 
-## 4. Step 3: Contract File Discovery
+## 4. Contract File Discovery
 
 Source location:
 
@@ -128,7 +88,7 @@ The refresh job uses Spark `binaryFile` to read the complete file content and me
 
 For PDFs, `_extract_text` uses `pypdf.PdfReader`. All other supported files are decoded as UTF-8 with replacement for invalid bytes.
 
-## 5. Step 4: Text Normalization
+## 5. Text Normalization
 
 The implementation calls:
 
@@ -138,7 +98,7 @@ The implementation calls:
 
 This removes repeated whitespace, line breaks, and blank lines before tokenization. The semantic text remains, but formatting boundaries are flattened. This produces consistent token windows across PDF and text inputs.
 
-## 6. Step 5: Tokenization
+## 6. Tokenization And Windowing
 
 The job loads:
 
@@ -165,7 +125,7 @@ The window size is 500 and the start offset is 450. Therefore adjacent windows s
 
 The last window is shorter when fewer than 500 tokens remain.
 
-## 7. Step 6: Vendor Metadata
+## 7. Vendor Metadata
 
 The filename is matched with:
 
@@ -183,7 +143,7 @@ Examples:
 
 The vendor ID then selects the vendor name, tier, and region from the in-code metadata mapping. Unknown filenames receive `UNKNOWN` and `Unknown` metadata values.
 
-## 8. Step 7: Chunk Row Construction
+## 8. Chunk Row Construction
 
 For every chunk, the job creates one output row:
 
@@ -206,21 +166,16 @@ token_count
 
 `chunk_index` starts at zero for each source file. There is exactly one 500-token window, or final partial window, per row.
 
-## 9. Step 8: Delta Write
+## 9. Delta Write And Change Data Feed
 
-Run:
+The notebook uses incremental Delta `MERGE` operations by default. The merge
+removes stale chunks for affected file IDs and inserts replacement chunks. It
+also records file events in `[BRONZE] contract_file_events_bronze`, current
+file state in `[SILVER] contract_file_manifest`, and normalized documents in
+`[SILVER] contract_documents_silver`.
 
-```bash
-databricks bundle run refresh_vendor_contract_chunks -t dev
-```
-
-The notebook uses incremental Delta `MERGE` operations by default:
-
-```python
-Delta MERGE removes stale chunks for affected file IDs and inserts replacement chunks. It also records file events in `[BRONZE] contract_file_events_bronze`, current file state in `[SILVER] contract_file_manifest`, and normalized documents in `[SILVER] contract_documents_silver`.
-
-Set `INGESTION_MODE=full_rebuild` to regenerate the complete Bronze, Silver, and Gold state from the Volume for recovery or reconciliation.
-```
+Set `INGESTION_MODE=full_rebuild` to regenerate the complete Bronze, Silver,
+and Gold state from the Volume for recovery or reconciliation.
 
 The result is a regular Delta table. Change Data Feed is enabled so downstream synchronization can identify row changes.
 
@@ -233,11 +188,11 @@ Run the compatibility gate before creating the managed index:
 The gate checks the live table type, Delta format, Change Data Feed, required
 index columns, SQL access, embedding endpoint, and chat model endpoint. It
 fails before index provisioning if the source is a Streaming Table,
-Materialized View, View, or otherwise incompatible object. The complete
-checklist and AI-assisted review guidance are in [Deployment Compatibility and
-Agent Review](06-deployment-compatibility-and-agent-review.md).
+Materialized View, View, or otherwise incompatible object. The operational
+setup and recovery procedure is in [Start To End Setup](Start%20To%20End%20Setup.md),
+and the script ownership map is in [Local Script Process Map](07-local-script-process-map.md).
 
-## 10. Step 9: Validate the Source Table
+## 10. Source Table Validation
 
 Run this in Databricks SQL Editor:
 
@@ -274,7 +229,7 @@ Expected properties:
 - The final row may be less than 500 tokens.
 - `chunk_index` increases from zero for each file.
 
-## 11. Step 10: AI Search Index Creation
+## 11. AI Search Index Creation
 
 The index script uses:
 
@@ -298,7 +253,7 @@ export AI_SEARCH_ENDPOINT=globalmart-supply-chain-search
 
 The script first ensures the endpoint exists, then calls `get_index`. If the SDK raises `NotFound`, it creates the index and waits until it is ready. If the index exists, it prints `Index already exists` and exits without changing it.
 
-## 12. Step 11: Trigger Index Synchronization
+## 12. Triggered Index Synchronization
 
 Because the index is `TRIGGERED`, source refresh and index synchronization are separate operations:
 
@@ -315,7 +270,7 @@ flowchart TD
 
 Do not expect an index update immediately after uploading a file. The refresh job must run first, followed by an explicit index sync.
 
-## 13. Step 12: Run the Text-to-SQL Query
+## 13. Structured Analytics Query
 
 ```sql
 SELECT
@@ -343,7 +298,7 @@ P-105: 0 * 12 = 0
 Total: 12,500
 ```
 
-## 14. Step 13: Run RAG Questions
+## 14. Retrieval-Augmented Questions
 
 Search the managed index with questions such as:
 
@@ -362,7 +317,7 @@ region_covered = Midwest
 
 The expected result should cite or retrieve the relevant contract chunks rather than derive the answer from the structured inventory tables.
 
-## 15. Step 14: Create the Genie Search Function
+## 15. Genie Search Function
 
 Run `sql/01_genie_search.sql` in a serverless SQL warehouse. The script creates `globalmart.supply_chain.search_vendor_contracts`, a table-valued function over the active `globalmart.supply_chain.vendor_contract_chunks_index_rebuilt`. Read-only checks are in `sql/02_genie_smoke_tests.sql` and should run after a manual index sync.
 

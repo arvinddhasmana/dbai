@@ -15,6 +15,7 @@ subscription_id="${AZURE_SUBSCRIPTION_ID:-}"
 resource_group="${DBAI_RESOURCE_GROUP:-rg-dbai-${environment_name}}"
 workspace_name="${DBAI_WORKSPACE_NAME:-dbai-${environment_name}}"
 workspace_host="${DATABRICKS_HOST:-}"
+workspace_id="${DATABRICKS_WORKSPACE_ID:-}"
 catalog_name="${DBAI_CATALOG:?Set DBAI_CATALOG to the existing Unity Catalog catalog.}"
 warehouse_id="${DATABRICKS_SQL_WAREHOUSE_ID:?Set DATABRICKS_SQL_WAREHOUSE_ID to the existing SQL Warehouse ID.}"
 auth_mode="${DBAI_AUTH_MODE:-azure-cli}"
@@ -39,6 +40,13 @@ if [[ -z "$workspace_host" ]]; then
     printf '%s\n' 'Set DATABRICKS_HOST, DATABRICKS_CONFIG_PROFILE, or AZURE_SUBSCRIPTION_ID so the workspace URL can be resolved.' >&2
     exit 1
   fi
+fi
+
+if [[ -z "$workspace_id" && "$workspace_host" =~ adb-([0-9]+)\. ]]; then
+  workspace_id="${BASH_REMATCH[1]}"
+fi
+if [[ -n "$workspace_id" ]]; then
+  export DATABRICKS_WORKSPACE_ID="$workspace_id"
 fi
 
 export DATABRICKS_HOST="$workspace_host"

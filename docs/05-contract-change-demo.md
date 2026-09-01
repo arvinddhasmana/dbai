@@ -6,7 +6,7 @@ This runbook demonstrates three file lifecycle events in the contract ingestion 
 2. Update an existing contract without changing its file identity.
 3. Delete an existing contract and remove its searchable chunks.
 
-The demo runner uploads files to the Unity Catalog Volume, invokes the deployed refresh job, and prints the Databricks CLI output. Run each action from the repository root.
+The demo runner uploads files to the Unity Catalog Volume, invokes the deployed refresh job, and prints the Databricks CLI output. The baseline deployment is assumed to be complete before this runbook starts. Run each action from the repository root.
 
 ## What The Demo Uses
 
@@ -20,7 +20,17 @@ The updated local file intentionally uses the same remote name as the original S
 
 The new vendor is `VEND-321`, Northstar Cold Chain, Platinum tier, Southeast region. Its metadata is present in both the contract parser and `dim_vendors`.
 
-## Prerequisites
+## Prerequisites And Baseline
+
+The baseline deployment must already provide all of the following:
+
+- Unity Catalog catalog/schema and the contract Volume.
+- Bronze, Silver, and Gold contract tables, plus `dim_products`, `dim_vendors`, and `fact_inventory_status`.
+- Baseline contract files for VEND-123, VEND-456, and VEND-789.
+- The regular Delta AI Search source table, triggered index, and
+  `globalmart-supply-chain-search` endpoint.
+- The `search_vendor_contracts` Genie function and configured Genie space.
+- The deployed Custom Agent and Databricks App.
 
 The Databricks CLI, Python SDK, and a serverless SQL warehouse must be
 available. Set the profile and warehouse ID:
@@ -30,21 +40,23 @@ export DATABRICKS_CONFIG_PROFILE=aiarchitect
 export DATABRICKS_SQL_WAREHOUSE_ID=<serverless-sql-warehouse-id>
 ```
 
-For a new or fully reset demo environment, run the idempotent bootstrap:
+This runbook does not create or deploy those components. For first-time setup,
+recovery, or teardown, use the canonical [Start To End Setup](Start%20To%20End%20Setup.md)
+guide.
+
+## Step 1: Verify The Existing Baseline
+
+Verify that the deployed baseline is healthy before changing any files. The
+checks below are read-only. If a previous demo run left the environment in a
+changed state, optionally restore the baseline first:
 
 ```bash
-/opt/az/bin/python3 scripts/local/bootstrap_demo_environment.py
+/opt/az/bin/python3 scripts/local/run_contract_change_demo.py reset
 ```
 
-It creates the catalog/schema/Volume, deploys the three bundle jobs, rebuilds
-all Delta demo tables from the baseline files, provisions the Search endpoint
-and index, and creates the Genie function. It never triggers the `TRIGGERED`
-Search sync. Manually sync the index once before running the Search checks in
-Step 5.
-
-## Step 1: Reset And Show Baseline
-
-Reset uploads the three baseline files, removes the demo-only new vendor file, and runs a `full_rebuild`. It also restores the original Silver contract if the demo was run previously.
+Reset uploads the three baseline files, removes the demo-only new vendor file,
+restores the original Silver contract, and runs a `full_rebuild`. Trigger a
+Search sync after reset before running the Search checks in Step 5.
 
 ```bash
 /opt/az/bin/python3 scripts/local/run_contract_change_demo.py reset
@@ -82,7 +94,10 @@ FROM globalmart.supply_chain.contract_file_manifest
 ORDER BY source_file;
 ```
 
-Expected baseline: three `ACTIVE` files, all at document version `1`, with event type `NEW`. There should be no `VEND-321` contract.
+Expected baseline: three `ACTIVE` files, all at document version `1`, with
+event type `NEW`. There should be no `VEND-321` contract. Confirm that the
+existing Genie space opens and that the Databricks App is ready before starting
+the lifecycle steps.
 
 ## Step 2: Add A New Vendor Contract
 
@@ -268,7 +283,7 @@ WHERE source_file = 'Contract_VEND123_Bronze.txt'
 
 Expected result: `event_type = 'DELETED'`, manifest and document lifecycle `DELETED`, and `active_chunk_count = 0`. Bronze and Silver retain the evidence instead of physically deleting the audit rows.
 
-## Step 5: Configure Genie, Synchronize, And Demonstrate Search
+## Step 5: Synchronize And Demonstrate All Three Experiences
 
 The managed index is `TRIGGERED`, so repeat the sync operation after each successful refresh, including after reset:
 
@@ -277,9 +292,9 @@ The managed index is `TRIGGERED`, so repeat the sync operation after each succes
 3. Select **Sync** or **Trigger update**.
 4. Wait for update status **Completed** and index status **Online**.
 
-Add the three structured tables and
-`globalmart.supply_chain.search_vendor_contracts` to the Genie space. Use the
-following instructions in the Genie space configuration:
+The baseline Genie space already contains the three structured tables and
+`globalmart.supply_chain.search_vendor_contracts`. Its instructions should
+include the following behavior:
 
 ```text
 Use SQL against dim_products, dim_vendors, and fact_inventory_status for exact
@@ -299,17 +314,16 @@ returns no rows after a deletion, say that no active searchable contract is
 available and do not answer from the deleted contract's audit records.
 ```
 
-The managed index is `TRIGGERED`, so repeat the sync operation after each
-successful refresh:
-
-1. Open the AI Search endpoint `globalmart-supply-chain-search`.
-2. Open index `globalmart.supply_chain.vendor_contract_chunks_index_rebuilt`.
-3. Select **Sync** or **Trigger update**.
-4. Wait for update status **Completed** and index status **Online**.
-
 After each sync, ask Genie the lifecycle question for that stage. Genie should
 use `search_vendor_contracts` for these contract questions. It searches the
 current indexed Gold chunks, not Bronze event history or Silver lifecycle rows.
+
+The Custom Agent in the Databricks App uses the same current Gold chunks
+through its retrieval tool and uses the SQL warehouse for structured facts.
+After each sync, run the equivalent question in the App and confirm that the
+answer cites the current contract evidence. This demonstrates that both
+conversational paths consume the same governed data state while Genie remains
+the managed SQL-first experience.
 
 ### Verify The Add
 

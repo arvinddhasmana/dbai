@@ -79,15 +79,23 @@ The managed index is:
 
 `globalmart.supply_chain.vendor_contract_chunks_index_rebuilt`
 
-## 4. Selected User Experience: Custom Databricks App
+## 4. Conversational Experiences
 
-The demo uses a Custom Databricks App as the conversational interface. The app
-hosts an MLflow AgentServer and Agent Framework loop with two tools:
+The demo exposes the same governed data through three complementary
+experiences:
 
-- A read-only SQL tool for `dim_products`, `dim_vendors`, and `fact_inventory_status`.
-- An AI Search retrieval tool for `vendor_contract_chunks_index_rebuilt`.
+- **Genie Agent:** a managed SQL-first conversation over the structured tables
+  and `search_vendor_contracts` function.
+- **Custom Agent:** the Agent Framework orchestration in
+  `app/agent_server/agent.py`, with read-only SQL, AI Search retrieval, and
+  grounded citations.
+- **Databricks App:** the dedicated UI and MLflow AgentServer host in `app/`.
+  It hosts the Custom Agent and presents conversation state, evidence, and
+  citations to the user.
 
-The agent decides whether the question needs SQL, contract retrieval, or both, then returns one grounded answer with contract file and chunk citations. Genie remains a faster SQL-first alternative, but the app gives this mixed supply-chain workflow explicit orchestration and a controllable interface.
+The Custom Agent and App are one deployed product boundary, while Genie is the
+parallel managed experience. Users can choose Genie for quick SQL-first
+analysis or the App for explicit structured, contract, and hybrid orchestration.
 
 ## 5. Genie Agent Implementation
 
@@ -230,6 +238,8 @@ End by explaining the division of responsibility:
 - SQL provides exact, auditable numerical answers.
 - AI Search provides grounded answers from contract language.
 - Shared vendor and regional metadata connects the two experiences.
+- Genie provides the managed SQL-first path; the Custom Agent and App provide
+  explicit orchestration and evidence presentation.
 - The triggered index makes refresh timing explicit and operationally visible.
 
 ## 10. Troubleshooting
