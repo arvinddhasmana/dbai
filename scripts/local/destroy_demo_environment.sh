@@ -13,6 +13,7 @@ workspace_name="${DBAI_WORKSPACE_NAME:-dbai-${environment_name}}"
 warehouse_state_dir="${DBAI_STATE_DIR:-.dbai-state}"
 warehouse_state_file="$warehouse_state_dir/${environment_name}-sql-warehouse-id"
 profile="${DATABRICKS_CONFIG_PROFILE:-dbai-${environment_name}}"
+auth_mode="${DBAI_AUTH_MODE:-${DATABRICKS_AUTH_TYPE:-}}"
 cleanup_local_config=false
 python_executable="${DBAI_PYTHON:-}"
 
@@ -85,17 +86,45 @@ if [[ -n "$workspace_exists" ]]; then
     http://*|https://*) ;;
     *) workspace_url="https://$workspace_url" ;;
   esac
-  export DATABRICKS_CONFIG_PROFILE="$profile"
   export DATABRICKS_HOST="$workspace_url"
-  if [[ -z "${DATABRICKS_TOKEN:-}" ]]; then
+  cli_profile_args=()
+  case "$auth_mode" in
+    azure-cli)
+      export DATABRICKS_AUTH_TYPE=azure-cli
+      unset DATABRICKS_CONFIG_PROFILE
+      ;;
+    oauth-m2m)
+      if [[ -z "${DATABRICKS_CLIENT_ID:-}" || -z "${DATABRICKS_CLIENT_SECRET:-}" ]]; then
+        printf '%s\n' 'DBAI_AUTH_MODE=oauth-m2m requires DATABRICKS_CLIENT_ID and DATABRICKS_CLIENT_SECRET.' >&2
+        exit 1
+      fi
+      export DATABRICKS_AUTH_TYPE=oauth-m2m
+      unset DATABRICKS_CONFIG_PROFILE
+      ;;
+    token)
+      : "${DATABRICKS_TOKEN:?DBAI_AUTH_MODE=token requires DATABRICKS_TOKEN.}"
+      unset DATABRICKS_AUTH_TYPE
+      unset DATABRICKS_CONFIG_PROFILE
+      ;;
+    '')
+      export DATABRICKS_CONFIG_PROFILE="$profile"
+      cli_profile_args=(-p "$profile")
+      ;;
+    *)
+      printf 'Unsupported DBAI_AUTH_MODE: %s (use azure-cli, oauth-m2m, or token).\n' "$auth_mode" >&2
+      exit 1
+      ;;
+  esac
+
+  if [[ -z "$auth_mode" && -z "${DATABRICKS_TOKEN:-}" ]]; then
     databricks auth login --profile "$profile" --host "$workspace_url"
   fi
-  databricks current-user me -p "$profile" --output json >/dev/null
+  databricks current-user me "${cli_profile_args[@]}" --output json >/dev/null
   "$python_executable" scripts/local/destroy_demo_environment.py --yes "$@"
   if [[ -f "$warehouse_state_file" ]]; then
     created_warehouse_id="$(<"$warehouse_state_file")"
     if [[ -n "$created_warehouse_id" ]]; then
-      databricks warehouses delete "$created_warehouse_id" -p "$profile"
+      databricks warehouses delete "$created_warehouse_id" "${cli_profile_args[@]}"
     fi
     rm -f "$warehouse_state_file"
   fi
