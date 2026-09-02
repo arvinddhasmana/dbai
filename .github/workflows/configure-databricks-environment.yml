@@ -32,7 +32,7 @@ jobs:
     runs-on: ubuntu-latest
     environment: ${{ inputs.environment }}
     env:
-      GH_TOKEN: ${{ github.token }}
+      GH_TOKEN: ${{ secrets.GH_ADMIN_TOKEN }}
       AZURE_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
       AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
       DBAI_ENVIRONMENT: ${{ inputs.environment }}
@@ -79,6 +79,10 @@ jobs:
           }
           test -n "$DBAI_APP_USER" || {
             echo 'DBAI_APP_USER is not configured. Set the environment variable or provide the app_user input.' >&2
+            exit 1
+          }
+          test -n "$GH_TOKEN" || {
+            echo 'GH_ADMIN_TOKEN is not configured for this GitHub Environment. Add a repository-authorized token so the workflow can update Environment variables.' >&2
             exit 1
           }
 

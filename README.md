@@ -203,6 +203,11 @@ The script configures these GitHub Environment settings:
   `DATABRICKS_SQL_WAREHOUSE_ID`, `DBAI_APP_USER`, `MODEL_ENDPOINT`, and
   `AI_SEARCH_ENDPOINT`
 
+The **Configure Databricks Environment** workflow also requires an environment
+secret named `GH_ADMIN_TOKEN`. Set it to a repository-authorized GitHub token
+with permission to manage Actions (Actions: Read and write) variables for this repository. The default `GITHUB_TOKEN` cannot update environment variables through the GitHub API, even
+when the workflow declares `actions: write`.
+
 After the workspace is deployed, run the protected **Configure Databricks
 Environment** workflow for the selected environment. It uses a separate
 Databricks OAuth M2M service principal, not the lower-privilege Azure deployment
