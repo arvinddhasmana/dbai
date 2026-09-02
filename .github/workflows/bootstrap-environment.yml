@@ -1,4 +1,4 @@
-name: Bootstrap Environment
+name: Bootstrap Databricks Environment
 
 on:
   workflow_dispatch:
@@ -23,7 +23,7 @@ concurrency:
 
 jobs:
   bootstrap:
-    name: Initialize Databricks data and search
+    name: Bootstrap Databricks data and search
     runs-on: ubuntu-latest
     environment: ${{ inputs.environment }}
     env:

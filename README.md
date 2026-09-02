@@ -123,7 +123,7 @@ python3 scripts/local/bootstrap_demo_environment.py \
   --user-principal "$DBAI_APP_USER"
 ```
 
-Bootstrap creates or updates the structured tables, contract chunk source, AI Search endpoint and index, and Genie-facing SQL function. The triggered AI Search index requires a manual sync after the contract refresh completes.
+Bootstrap creates or updates the structured tables, contract chunk source, AI Search endpoint and index, and Genie-facing SQL function. Creating the triggered AI Search index automatically starts its initial synchronization. After Bootstrap completes, wait for the index to become Online and the sync to become Completed before testing retrieval. The remaining manual step is configuring the Genie experience in the Databricks UI.
 
 ## Deploy a Disposable Azure Environment
 
@@ -157,7 +157,7 @@ Deployment is intentionally split into separate lifecycles:
 | [`Deploy Infrastructure`](.github/workflows/deploy-infrastructure.yml) | Manual | Azure resource groups and Databricks workspaces |
 | [`Configure Databricks Environment`](.github/workflows/configure-databricks-environment.yml) | Manual with protected environment approval | Databricks account/workspace access, catalog, SQL Warehouse, and GitHub variables |
 | [`Deploy Workload`](.github/workflows/deploy-workload.yml) | Workload changes on `main`, or manual | Databricks App, jobs, and Bundle resources |
-| [`Bootstrap Environment`](.github/workflows/bootstrap-environment.yml) | Manual | Catalog objects, sample data, contract chunks, AI Search, and Genie SQL function |
+| [`Bootstrap Databricks Environment`](.github/workflows/bootstrap-environment.yml) | Manual | Catalog objects, sample data, contract chunks, AI Search, and Genie SQL function |
 | [`Destroy Environment`](.github/workflows/destroy-environment.yml) | Manual with confirmation | Databricks data, App, jobs, and deployment-owned Azure resource groups |
 
 `Deploy Workload` does not run Bicep or bootstrap data. This keeps normal SDLC
@@ -290,7 +290,7 @@ and runs `scripts/local/deploy_workload.sh` against the existing workspace. The
 workload script updates the Bundle-managed jobs and App resource, and uploads
 the complete `app/` directory to the Bundle workspace path; it does not start
 or deploy the App revision before the AI Search index exists.
-`Bootstrap Environment` uses the same OIDC session to run
+`Bootstrap Databricks Environment` uses the same OIDC session to run
 `scripts/local/bootstrap_demo_environment.py`. It creates the data and AI
 Search objects, grants the configured `DBAI_APP_USER` and App service
 principal, then runs `scripts/local/deploy_app.sh` to start the App and deploy
@@ -299,7 +299,8 @@ non-interactive Azure CLI session. No long-lived credential is stored in the
 repository.
 
 The first-time order is **Deploy Infrastructure**, **Configure Databricks
-Environment**, **Deploy Workload**, and then **Bootstrap Environment**. Bootstrap
+Environment**, **Deploy Workload**, and then **Bootstrap Databricks Environment**.
+Bootstrap
 uses `--skip-deploy`, so the workload must already be deployed. The App starts
 and deploys only after Bootstrap creates the data and AI Search objects.
 

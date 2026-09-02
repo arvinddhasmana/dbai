@@ -104,4 +104,4 @@ if [[ -z "$(jq -r '.resources.apps.supply_chain_agent.name // empty' <<< "$bundl
   printf '%s\n' 'Bundle summary did not contain the supply_chain_agent App.' >&2
   exit 1
 fi
-printf 'Bundle workload deployed. App activation is performed by Bootstrap Environment after AI Search setup. Target: %s\n' "$target"
+printf 'Bundle workload deployed. App activation is performed by Bootstrap Databricks Environment after AI Search setup. Target: %s\n' "$target"

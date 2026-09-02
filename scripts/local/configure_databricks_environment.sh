@@ -576,4 +576,4 @@ gh variable set DBAI_APP_USER --repo "$repo" --env "$environment_name" --body "$
 printf 'Updated GitHub Environment %s: DBAI_CATALOG=%s, DATABRICKS_SQL_WAREHOUSE_ID=%s\n' \
   "$environment_name" "$catalog_name" "$warehouse_id"
 printf '\nDatabricks environment configuration complete for %s.\n' "$environment_name"
-printf 'Run Deploy Workload, then Bootstrap Environment for this environment.\n'
+printf 'Run Deploy Workload, then Bootstrap Databricks Environment for this environment.\n'

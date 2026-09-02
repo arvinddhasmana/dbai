@@ -159,4 +159,4 @@ scripts/local/deploy_app.sh
 
 printf '\nDeployment complete. Workspace: %s\n' "$workspace_url"
 printf 'SQL warehouse: %s\n' "$warehouse_id"
-printf '%s\n' "Trigger the TRIGGERED AI Search index sync before testing retrieval."
+printf '%s\n' "Wait for the TRIGGERED AI Search index to become Online and its initial sync to become Completed before testing retrieval."

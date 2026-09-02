@@ -60,9 +60,9 @@ Run the complete idempotent bootstrap:
 
 The bootstrap creates the catalog/schema/Volume, deploys the bundle, writes the
 structured tables, uploads baseline contracts, rebuilds the contract layers,
-creates the Search endpoint/index, and creates the Genie function. It does not
-trigger the `TRIGGERED` index. Manually sync the index and wait for **Online**
-and **Completed** before asking retrieval questions.
+creates the Search endpoint/index, and creates the Genie function. Creating the
+`TRIGGERED` index automatically starts its initial sync. After Bootstrap,
+wait for **Online** and **Completed** before asking retrieval questions.
 
 The bundle contains:
 

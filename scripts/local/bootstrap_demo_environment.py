@@ -135,7 +135,10 @@ def main():
             client=workspace,
         )
 
-    print("Bootstrap complete. The TRIGGERED AI Search index still requires a manual sync.")
+    print(
+        "Bootstrap complete. The TRIGGERED AI Search index is provisioning or syncing; "
+        "wait for Online and Completed before testing retrieval."
+    )
 
 
 if __name__ == "__main__":

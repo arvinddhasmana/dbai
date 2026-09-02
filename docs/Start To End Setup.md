@@ -179,7 +179,7 @@ Genie-facing function. It also applies the final App and OBO user permissions.
 ### GitHub Actions
 
 1. Open the repository's **Actions** tab.
-2. Select **Bootstrap Environment**.
+2. Select **Bootstrap Databricks Environment**.
 3. Select `$ENVIRONMENT`.
 4. Run the workflow.
 
@@ -199,25 +199,27 @@ steps only when recovering or inspecting one component:
 2. Run `databricks bundle run generate_mock_data -t "$BUNDLE_TARGET"` and
   `databricks bundle run refresh_vendor_contract_chunks -t "$BUNDLE_TARGET"`.
 3. Run `scripts/local/create_vendor_contract_index.py` to provision the
-  endpoint and triggered Delta Sync index if they are missing.
+  endpoint and triggered Delta Sync index if they are missing. Creating the
+  index automatically starts its initial synchronization.
 4. Run `sql/01_genie_search.sql` in the configured SQL Warehouse if the Genie
   function was not created by Bootstrap.
 
 The refresh job supports `INGESTION_MODE=full_rebuild`; otherwise it processes
-new, updated, and deleted files incrementally. Trigger AI Search synchronization
-after the refresh job completes.
+new, updated, and deleted files incrementally. When the triggered index is
+created, its initial synchronization starts automatically. Wait for the index
+to become Online and the sync to become Completed after Bootstrap.
 
-## 8. Synchronize and Validate AI Search
+## 8. Wait for AI Search and Validate
 
-The index uses triggered synchronization. Bootstrap does not automatically
-start the sync.
+The index uses triggered synchronization. Creating the index during Bootstrap
+automatically starts its initial sync. Bootstrap finishes while the index may
+still be provisioning or syncing.
 
 In the Databricks workspace:
 
 1. Open the AI Search endpoint.
 2. Open the contract index.
-3. Trigger synchronization.
-4. Wait until the index is **Online** and the sync is **Completed**.
+3. Wait until the index is **Online** and the sync is **Completed**.
 
 Then run:
 
@@ -231,7 +233,7 @@ Genie is the SQL-first conversational experience for structured inventory and
 vendor analysis, with optional contract retrieval through the
 `search_vendor_contracts` table-valued function. Configure it only after
 Bootstrap has created the function and the triggered AI Search index has
-completed synchronization.
+completed its initial synchronization.
 
 ### Create the Genie space
 
