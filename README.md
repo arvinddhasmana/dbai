@@ -209,6 +209,10 @@ Databricks OAuth M2M service principal, not the lower-privilege Azure deployment
 identity, and resolves the current workspace URL and ID from Azure on every run.
 The workflow is safe to rerun after workspace recreation.
 
+`DBAI_APP_USER` must be an email address for the Databricks OBO user. The
+workflow creates the account user when needed, assigns it to the selected
+workspace, waits for propagation, and then applies its permissions.
+
 ### One-time Databricks administrator setup
 
 An existing Databricks account administrator must perform these steps once:

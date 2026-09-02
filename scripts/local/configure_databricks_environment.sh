@@ -247,6 +247,34 @@ else
 fi
 
 account_json="$(databricks account service-principals list "${account_cli_args[@]}" --output json)"
+if [[ -n "$app_user" ]]; then
+  account_users_json="$(databricks account users list \
+    --filter "userName eq \"${app_user}\"" \
+    "${account_cli_args[@]}" \
+    --output json)"
+  account_user_id="$(jq -r '
+    (if type == "array" then . else (.Resources // .resources // []) end)
+    | .[0].id // empty
+  ' <<< "$account_users_json")"
+  if [[ -z "$account_user_id" ]]; then
+    account_user_json="$(databricks account users create \
+      --user-name "$app_user" \
+      --active \
+      "${account_cli_args[@]}" \
+      --output json)"
+    account_user_id="$(jq -r '.id // empty' <<< "$account_user_json")"
+    if [[ -z "$account_user_id" ]]; then
+      printf 'Could not create Databricks account user: %s\n' "$app_user" >&2
+      exit 1
+    fi
+    printf 'Created Databricks account user: %s\n' "$app_user"
+  fi
+  databricks account workspace-assignment update "$workspace_id" "$account_user_id" \
+    --json '{"permissions":["USER"]}' \
+    "${account_cli_args[@]}" \
+    --output text >/dev/null
+  printf 'Assigned OBO user to workspace %s.\n' "$workspace_id"
+fi
 if [[ "$auth_mode" == "oauth-m2m" ]]; then
   bootstrap_sp_id="$(jq -r --arg application_id "$DATABRICKS_CLIENT_ID" '
     (if type == "array" then . else (.Resources // .resources // []) end)
@@ -307,6 +335,29 @@ if [[ -z "$app_user" ]]; then
   exit 1
 fi
 printf 'App on-behalf-of user: %s\n' "$app_user"
+
+workspace_users_json="$(databricks users list "${workspace_cli_args[@]}" --output json)"
+for attempt in {1..12}; do
+  if jq -e --arg user "$app_user" '
+    (if type == "array" then . else (.Resources // .resources // []) end)
+    | any((.userName // .user_name // "") == $user)
+  ' <<< "$workspace_users_json" >/dev/null; then
+    break
+  fi
+  if [[ "$attempt" -lt 12 ]]; then
+    printf 'Waiting for OBO user assignment to appear in workspace (%s/12).\n' "$attempt"
+    sleep 5
+    workspace_users_json="$(databricks users list "${workspace_cli_args[@]}" --output json)"
+  fi
+done
+if ! jq -e --arg user "$app_user" '
+  (if type == "array" then . else (.Resources // .resources // []) end)
+  | any((.userName // .user_name // "") == $user)
+' <<< "$workspace_users_json" >/dev/null; then
+  printf 'Databricks user does not exist in workspace %s: %s\n' "$workspace_host" "$app_user" >&2
+  printf 'The account user was assigned automatically, but the assignment did not propagate. Check account/workspace permissions and rerun.\n' >&2
+  exit 1
+fi
 
 workspace_sp_json=""
 workspace_sp_id=""

@@ -139,7 +139,9 @@ workspace URL and ID, configures account and workspace permissions with OAuth
 M2M, discovers or creates the isolated catalog and SQL Warehouse, and writes
 the current `DBAI_CATALOG`, `DATABRICKS_SQL_WAREHOUSE_ID`, and `DBAI_APP_USER`
 values to that GitHub Environment. It is safe to rerun after workspace
-recreation.
+recreation. `DBAI_APP_USER` is an email address for the Databricks OBO user;
+the workflow creates the account user when needed, assigns it to the selected
+workspace, and waits for the assignment to propagate before applying permissions.
 
 The account ID is distinct from the Azure subscription ID and workspace ID.
 The OAuth secret is shown only once when created; do not commit it or print it
