@@ -17,6 +17,9 @@ Options:
   --subscription-id ID        Azure subscription (default: current subscription)
   --deployment-client-id ID   Entra application/client ID used by GitHub Actions
                               (default: 16f08498-e32f-4650-9cfe-09ef6988f602)
+  --auth-mode MODE            Databricks authentication mode: profiles or
+                              oauth-m2m (default: profiles)
+  --account-id ID             Databricks account ID; required for oauth-m2m
   --account-profile NAME      Databricks account-admin CLI profile
                               (default: DATABRICKS_ACCOUNT_PROFILE or account-admin)
   --workspace-profile NAME    Databricks workspace-admin CLI profile
@@ -27,7 +30,7 @@ Options:
   --warehouse-name NAME       SQL Warehouse name to discover/create
                               (default: dbai-ENVIRONMENT-sql)
   --app-user PRINCIPAL        Databricks user for App on-behalf-of requests
-                              (default: current workspace profile user)
+                              (default: current authenticated workspace identity)
   --model-endpoint NAME       Model-serving endpoint to grant CAN_QUERY
                               (default: databricks-llama-4-maverick)
   --model-endpoint-id ID      UUID required by the serving permissions API
@@ -37,8 +40,8 @@ Options:
   --help                      Show this help
 
 The script writes DBAI_CATALOG and DATABRICKS_SQL_WAREHOUSE_ID only to the
-selected GitHub Environment. It does not create secrets or workspace-admin
-roles for the deployment service principal.
+selected GitHub Environment. In oauth-m2m mode, DATABRICKS_CLIENT_ID and
+DATABRICKS_CLIENT_SECRET must identify a Databricks account administrator.
 EOF
 }
 
@@ -46,6 +49,9 @@ environment_name=""
 repo=""
 subscription_id="${AZURE_SUBSCRIPTION_ID:-}"
 deployment_client_id="${DBAI_DEPLOYMENT_CLIENT_ID:-16f08498-e32f-4650-9cfe-09ef6988f602}"
+auth_mode="${DBAI_AUTH_MODE:-profiles}"
+account_id="${DATABRICKS_ACCOUNT_ID:-}"
+account_host="${DATABRICKS_ACCOUNT_HOST:-https://accounts.azuredatabricks.net}"
 account_profile="${DATABRICKS_ACCOUNT_PROFILE:-account-admin}"
 workspace_profile="${DATABRICKS_WORKSPACE_PROFILE:-${DATABRICKS_CONFIG_PROFILE:-}}"
 catalog_override="${DBAI_CATALOG:-}"
@@ -75,6 +81,14 @@ while [[ $# -gt 0 ]]; do
       ;;
     --deployment-client-id)
       deployment_client_id="$2"
+      shift 2
+      ;;
+    --auth-mode)
+      auth_mode="$2"
+      shift 2
+      ;;
+    --account-id)
+      account_id="$2"
       shift 2
       ;;
     --account-profile)
@@ -135,6 +149,25 @@ if [[ ! "$environment_name" =~ ^(dev|test|prod)$ ]]; then
   printf '%s\n' '--environment must be dev, test, or prod.' >&2
   exit 1
 fi
+
+case "$auth_mode" in
+  profiles)
+    ;;
+  oauth-m2m)
+    if [[ -z "$account_id" ]]; then
+      printf '%s\n' '--account-id or DATABRICKS_ACCOUNT_ID is required with --auth-mode oauth-m2m.' >&2
+      exit 1
+    fi
+    if [[ -z "${DATABRICKS_CLIENT_ID:-}" || -z "${DATABRICKS_CLIENT_SECRET:-}" ]]; then
+      printf '%s\n' 'oauth-m2m requires DATABRICKS_CLIENT_ID and DATABRICKS_CLIENT_SECRET.' >&2
+      exit 1
+    fi
+    ;;
+  *)
+    printf 'Unsupported authentication mode: %s (use profiles or oauth-m2m).\n' "$auth_mode" >&2
+    exit 1
+    ;;
+esac
 
 if [[ -z "${DATABRICKS_WORKSPACE_PROFILE:-}" && -z "${DATABRICKS_CONFIG_PROFILE:-}" ]]; then
   workspace_profile="dbai-${environment_name}-admin"
@@ -199,7 +232,38 @@ if [[ -z "$workspace_id" || -z "$workspace_url" ]]; then
 fi
 workspace_host="https://${workspace_url#https://}"
 
-account_json="$(databricks account service-principals list --profile "$account_profile" --output json)"
+account_cli_args=()
+workspace_cli_args=()
+if [[ "$auth_mode" == "oauth-m2m" ]]; then
+  unset DATABRICKS_CONFIG_PROFILE DATABRICKS_TOKEN DATABRICKS_USERNAME DATABRICKS_PASSWORD
+  export DATABRICKS_AUTH_TYPE=oauth-m2m
+  export DATABRICKS_CLIENT_ID
+  export DATABRICKS_CLIENT_SECRET
+  export DATABRICKS_ACCOUNT_ID="$account_id"
+  export DATABRICKS_HOST="$account_host"
+else
+  account_cli_args=(--profile "$account_profile")
+  workspace_cli_args=(--profile "$workspace_profile")
+fi
+
+account_json="$(databricks account service-principals list "${account_cli_args[@]}" --output json)"
+if [[ "$auth_mode" == "oauth-m2m" ]]; then
+  bootstrap_sp_id="$(jq -r --arg application_id "$DATABRICKS_CLIENT_ID" '
+    (if type == "array" then . else (.Resources // .resources // []) end)
+    | map(select((.applicationId // .application_id // "") == $application_id))
+    | .[0].id // empty
+  ' <<< "$account_json")"
+  if [[ -z "$bootstrap_sp_id" ]]; then
+    printf 'The bootstrap client is not registered as a Databricks account service principal: %s\n' "$DATABRICKS_CLIENT_ID" >&2
+    exit 1
+  fi
+  databricks account workspace-assignment update "$workspace_id" "$bootstrap_sp_id" \
+    --json '{"permissions":["ADMIN"]}' \
+    "${account_cli_args[@]}" \
+    --output text >/dev/null
+  printf 'Assigned bootstrap service principal administrator access to workspace %s.\n' "$workspace_id"
+fi
+
 account_sp_id="$(jq -r --arg application_id "$deployment_client_id" '
   (if type == "array" then . else (.Resources // .resources // []) end)
   | map(select((.applicationId // .application_id // "") == $application_id))
@@ -209,7 +273,7 @@ if [[ -z "$account_sp_id" ]]; then
   account_sp_json="$(databricks account service-principals create \
     --application-id "$deployment_client_id" \
     --display-name dbai-github-actions \
-    --profile "$account_profile" \
+    "${account_cli_args[@]}" \
     --output json)"
   account_sp_id="$(jq -r '.id // empty' <<< "$account_sp_json")"
   if [[ -z "$account_sp_id" ]]; then
@@ -223,15 +287,19 @@ fi
 
 databricks account workspace-assignment update "$workspace_id" "$account_sp_id" \
   --json '{"permissions":["USER"]}' \
-  --profile "$account_profile" \
+  "${account_cli_args[@]}" \
   --output text >/dev/null
 printf 'Assigned deployment service principal to workspace %s.\n' "$workspace_id"
 
 export DATABRICKS_CONFIG_PROFILE="$workspace_profile"
 export DATABRICKS_HOST="$workspace_host"
+if [[ "$auth_mode" == "oauth-m2m" ]]; then
+  unset DATABRICKS_CONFIG_PROFILE
+  unset DATABRICKS_ACCOUNT_ID
+fi
 
 if [[ -z "$app_user" ]]; then
-  current_user_json="$(databricks current-user me --profile "$workspace_profile" --output json)"
+  current_user_json="$(databricks current-user me "${workspace_cli_args[@]}" --output json)"
   app_user="$(jq -r '(.userName // .user_name // ((.emails // [])[] | select(.primary == true) | .value) // empty)' <<< "$current_user_json")"
 fi
 if [[ -z "$app_user" ]]; then
@@ -243,7 +311,7 @@ printf 'App on-behalf-of user: %s\n' "$app_user"
 workspace_sp_json=""
 workspace_sp_id=""
 for attempt in {1..12}; do
-  workspace_sp_json="$(databricks service-principals list --profile "$workspace_profile" --output json)"
+  workspace_sp_json="$(databricks service-principals list "${workspace_cli_args[@]}" --output json)"
   workspace_sp_id="$(jq -r --arg application_id "$deployment_client_id" '
     (if type == "array" then . else (.Resources // .resources // []) end)
     | map(select((.applicationId // .application_id // "") == $application_id))
@@ -273,7 +341,7 @@ for entitlement in workspace-access databricks-sql-access; do
     entitlement_patch="$(jq -cn --arg entitlement "$entitlement" '{schemas:["urn:ietf:params:scim:api:messages:2.0:PatchOp"],Operations:[{op:"add",path:"entitlements",value:[{value:$entitlement}]}]}')"
     databricks api patch "/api/2.0/preview/scim/v2/ServicePrincipals/${workspace_sp_id}" \
       --json "$entitlement_patch" \
-      --profile "$workspace_profile" \
+      "${workspace_cli_args[@]}" \
       --output text >/dev/null
   fi
 done
@@ -282,7 +350,7 @@ printf 'Workspace entitlements verified for deployment service principal.\n'
 catalog_name="$catalog_override"
 if [[ -n "$catalog_name" ]]; then
   existing_catalog_json="$(databricks catalogs get "$catalog_name" \
-    --profile "$workspace_profile" \
+    "${workspace_cli_args[@]}" \
     --output json 2>/dev/null || true)"
   if [[ -z "$(jq -r '.name // empty' <<< "$existing_catalog_json")" ]]; then
     if [[ "$catalog_override_argument" == true ]]; then
@@ -294,7 +362,7 @@ if [[ -n "$catalog_name" ]]; then
   fi
 fi
 if [[ -z "$catalog_name" ]]; then
-  catalogs_json="$(databricks catalogs list --profile "$workspace_profile" --output json)"
+  catalogs_json="$(databricks catalogs list "${workspace_cli_args[@]}" --output json)"
   catalog_name="$(jq -r --arg prefix "dbai_${environment_name}" '
     (if type == "array" then . else (.catalogs // .Resources // .resources // []) end)
     | map(select((.catalog_type // "") == "MANAGED_CATALOG" and (.isolation_mode // "") == "ISOLATED" and ((.name // "") == $prefix or (.name // "" | startswith($prefix + "_")))))
@@ -309,7 +377,7 @@ printf 'Using Unity Catalog: %s\n' "$catalog_name"
 
 if [[ -n "$warehouse_id" ]]; then
   existing_warehouse_json="$(databricks warehouses get "$warehouse_id" \
-    --profile "$workspace_profile" \
+    "${workspace_cli_args[@]}" \
     --output json 2>/dev/null || true)"
   if [[ -z "$(jq -r '.id // .warehouse_id // empty' <<< "$existing_warehouse_json")" ]]; then
     if [[ "$warehouse_id_argument" == true ]]; then
@@ -321,7 +389,7 @@ if [[ -n "$warehouse_id" ]]; then
   fi
 fi
 if [[ -z "$warehouse_id" ]]; then
-  warehouses_json="$(databricks warehouses list --profile "$workspace_profile" --output json)"
+  warehouses_json="$(databricks warehouses list "${workspace_cli_args[@]}" --output json)"
   warehouse_id="$(jq -r --arg name "$warehouse_name" '
     (if type == "array" then . else (.warehouses // .Resources // .resources // []) end)
     | map(select(.name == $name))
@@ -338,7 +406,7 @@ if [[ -z "$warehouse_id" ]]; then
     --enable-serverless-compute \
     --warehouse-type PRO \
     --no-wait \
-    --profile "$workspace_profile" \
+    "${workspace_cli_args[@]}" \
     --output json)"
   warehouse_id="$(jq -r '.id // empty' <<< "$warehouse_json")"
   if [[ -z "$warehouse_id" ]]; then
@@ -354,7 +422,7 @@ warehouse_acl="$(jq -cn --arg principal "$deployment_client_id" --arg user "$app
   '{access_control_list:([{service_principal_name:$principal,permission_level:"CAN_USE"}] + [{user_name:$user,permission_level:"CAN_USE"}])}')"
 databricks warehouses update-permissions "$warehouse_id" \
   --json "$warehouse_acl" \
-  --profile "$workspace_profile" \
+  "${workspace_cli_args[@]}" \
   --output text >/dev/null
 printf 'Granted CAN_USE on SQL Warehouse.\n'
 
@@ -417,13 +485,13 @@ printf 'Granted Unity Catalog permissions and prepared supply_chain.vendor_contr
   --bootstrap-principal "$app_user"
 printf 'Prepared bootstrap MODIFY permissions for existing Gold tables.\n'
 
-serving_json="$(databricks serving-endpoints list --profile "$workspace_profile" --output json 2>/dev/null || printf '[]')"
+serving_json="$(databricks serving-endpoints list "${workspace_cli_args[@]}" --output json 2>/dev/null || printf '[]')"
 if [[ -n "$model_endpoint_id" ]]; then
   serving_acl="$(jq -cn --arg principal "$deployment_client_id" \
     '{access_control_list:[{service_principal_name:$principal,permission_level:"CAN_QUERY"}]}')"
   databricks permissions update serving-endpoints "$model_endpoint_id" \
     --json "$serving_acl" \
-    --profile "$workspace_profile" \
+    "${workspace_cli_args[@]}" \
     --output text >/dev/null
   printf 'Granted CAN_QUERY on model endpoint ID: %s\n' "$model_endpoint_id"
 elif jq -e --arg name "$model_endpoint" '
@@ -436,13 +504,13 @@ else
 fi
 
 if [[ -n "$ai_search_endpoint_id" ]] && databricks permissions get vector-search-endpoints "$ai_search_endpoint_id" \
-  --profile "$workspace_profile" \
+  "${workspace_cli_args[@]}" \
   --output json >/dev/null 2>&1; then
   search_acl="$(jq -cn --arg principal "$deployment_client_id" \
     '{access_control_list:[{service_principal_name:$principal,permission_level:"CAN_USE"}]}')"
   databricks permissions update vector-search-endpoints "$ai_search_endpoint_id" \
     --json "$search_acl" \
-    --profile "$workspace_profile" \
+    "${workspace_cli_args[@]}" \
     --output text >/dev/null
   printf 'Granted CAN_USE on AI Search endpoint ID: %s\n' "$ai_search_endpoint_id"
 elif [[ -n "$ai_search_endpoint_id" ]]; then

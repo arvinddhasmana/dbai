@@ -34,8 +34,9 @@ The following commands must be available:
 - `python3`
 
 The Azure account must be allowed to create resource groups and Databricks
-workspaces. The Databricks administrator must be an account administrator and a
-workspace administrator.
+workspaces. The one-time Databricks bootstrap administrator must be an account
+administrator and a workspace administrator. Normal deployment workflows use
+the lower-privilege Azure OIDC identity.
 
 ## 1. Set Stable Environment Values
 
@@ -56,8 +57,6 @@ export RESOURCE_GROUP="rg-dbai-${ENVIRONMENT}"
 export MANAGED_RESOURCE_GROUP="rg-dbai-${ENVIRONMENT}-managed"
 export WORKSPACE_NAME="dbai-${ENVIRONMENT}"
 
-export ACCOUNT_PROFILE="account-admin"
-export WORKSPACE_PROFILE="dbai-${ENVIRONMENT}-admin"
 export BUNDLE_TARGET="${ENVIRONMENT}"
 export STATE_DIR=".dbai-state"
 ```
@@ -71,8 +70,6 @@ export STATE_DIR=".dbai-state"
 | `DEPLOYMENT_CLIENT_ID` | The client ID printed by the GitHub/Azure setup command, or the Entra app registration used for GitHub OIDC |
 | `RESOURCE_GROUP` | Azure Portal > **Resource groups**, or the GitHub Environment variable `DBAI_RESOURCE_GROUP` |
 | `WORKSPACE_NAME` | Azure Portal > **Databricks workspaces**, or the GitHub Environment variable `DBAI_WORKSPACE_NAME` |
-| `ACCOUNT_PROFILE` | Any local name used for the Databricks account-admin CLI profile |
-| `WORKSPACE_PROFILE` | Any local name used for the Databricks workspace-admin CLI profile |
 
 The following values belong to the current Databricks workspace and can change
 after recreation. Do not copy them from an old deployment:
@@ -103,7 +100,7 @@ az account show \
 
 Run this once when setting up the repository. It creates or reuses the Entra
 application, GitHub federated credentials, Azure role assignment, and GitHub
-Environments.
+Environments:
 
 ```bash
 scripts/local/configure_github_azure.sh \
@@ -111,318 +108,49 @@ scripts/local/configure_github_azure.sh \
   --subscription-id "$SUBSCRIPTION_ID"
 ```
 
-The script prints the Entra application client ID. Store it in the current
-terminal for later steps:
-
-```bash
-export DEPLOYMENT_CLIENT_ID="<client-id-printed-by-the-script>"
-```
-
-When rerunning this step, pass the existing client ID explicitly if multiple
-Entra applications use the display name `dbai-github-actions`:
-
-```bash
-scripts/local/configure_github_azure.sh \
-  --repo "$REPO" \
-  --subscription-id "$SUBSCRIPTION_ID" \
-  --app-name dbai-github-actions \
-  --client-id "$DEPLOYMENT_CLIENT_ID" \
-  --environments "$ENVIRONMENT"
-```
-
-You do not need to run this step again just because the Azure resource group or
-Databricks workspace was recreated. Run it again only when the repository's
-GitHub OIDC configuration or Entra application does not exist.
-
-The script uses these default Azure resource names unless the corresponding
-GitHub Environment variables already contain custom names:
-
-- `rg-dbai-dev`, `rg-dbai-test`, or `rg-dbai-prod`
-- `rg-dbai-<environment>-managed`
-- `dbai-<environment>`
-
-Custom resource-group names must remain under the selected environment's
-`rg-dbai-<environment>` namespace. Do not point these variables at an existing
-shared or platform-managed resource group.
+Store the printed client ID as `DEPLOYMENT_CLIENT_ID`. The script configures
+`AZURE_CLIENT_ID` and `AZURE_TENANT_ID` secrets plus the Azure subscription,
+location, resource group, managed resource group, and workspace name variables
+in each selected GitHub Environment. Do not rerun this step after a workspace
+recreation unless the OIDC application or federated credentials are missing.
 
 ## 4. Deploy Azure Infrastructure
 
-Set the infrastructure values used by the local script:
+Run **Deploy Infrastructure** from the repository's GitHub Actions tab and
+select `$ENVIRONMENT`. This creates the dedicated resource groups and
+Databricks workspace. It does not create the Databricks catalog, SQL Warehouse,
+App, jobs, or demo data.
 
-```bash
-export AZURE_SUBSCRIPTION_ID="$SUBSCRIPTION_ID"
-export AZURE_LOCATION="$AZURE_LOCATION"
-export DBAI_ENVIRONMENT="$ENVIRONMENT"
-export DBAI_RESOURCE_GROUP="$RESOURCE_GROUP"
-export DBAI_MANAGED_RESOURCE_GROUP="$MANAGED_RESOURCE_GROUP"
-export DBAI_WORKSPACE_NAME="$WORKSPACE_NAME"
-```
+## 5. Configure Databricks Environment
 
-Deploy the subscription-scoped Bicep template:
+An account administrator must create a dedicated Databricks-managed bootstrap
+service principal, grant it **account admin** and workspace administrator
+access, and create a Databricks OAuth M2M secret with the `all-apis` scope.
+Store its client ID and secret as the protected
+GitHub Environment secrets `DATABRICKS_ADMIN_CLIENT_ID` and
+`DATABRICKS_ADMIN_CLIENT_SECRET`. Store the Databricks account ID as the
+protected variable `DATABRICKS_ACCOUNT_ID`. Configure required reviewers on
+the environment.
 
-```bash
-scripts/local/deploy_infrastructure.sh
-```
+Run **Configure Databricks Environment** from GitHub Actions after **Deploy
+Infrastructure**. Select `$ENVIRONMENT`, approve the environment protection,
+and optionally provide the App user. The workflow resolves the current
+workspace URL and ID, configures account and workspace permissions with OAuth
+M2M, discovers or creates the isolated catalog and SQL Warehouse, and writes
+the current `DBAI_CATALOG`, `DATABRICKS_SQL_WAREHOUSE_ID`, and `DBAI_APP_USER`
+values to that GitHub Environment. It is safe to rerun after workspace
+recreation.
 
-Alternatively, run the **Deploy Infrastructure** workflow from the GitHub
-Actions tab and select `$ENVIRONMENT`.
+The account ID is distinct from the Azure subscription ID and workspace ID.
+The OAuth secret is shown only once when created; do not commit it or print it
+in workflow logs.
 
-This step creates the dedicated resource group and the Azure Databricks
-workspace. It does not create the Databricks catalog, SQL Warehouse, App, jobs,
-or demo data.
-
-### Optional one-command local deployment
-
-For a disposable local Azure demo, the convenience orchestrator combines
-infrastructure, workload deployment, bootstrap, and App activation:
-
-```bash
-export AZURE_SUBSCRIPTION_ID="$SUBSCRIPTION_ID"
-export AZURE_LOCATION="$AZURE_LOCATION"
-scripts/local/deploy_demo_environment.sh
-```
-
-It discovers the workspace-specific isolated catalog, creates a single-node
-serverless SQL Warehouse when one is not supplied, and records deployment state
-under `.dbai-state/`. Use the staged steps in this guide when infrastructure,
-workload, and bootstrap need to remain separate, as they do in GitHub Actions.
-
-## 5. Resolve the New Workspace URL
-
-Always retrieve the URL after infrastructure deployment. It may be different
-from the URL of a deleted workspace.
-
-```bash
-export WORKSPACE_URL="$(az databricks workspace show \
-  --resource-group "$RESOURCE_GROUP" \
-  --name "$WORKSPACE_NAME" \
-  --subscription "$SUBSCRIPTION_ID" \
-  --query workspaceUrl \
-  --output tsv)"
-```
-
-Check the result:
-
-```bash
-printf 'Databricks workspace: https://%s\n' "${WORKSPACE_URL#https://}"
-```
-
-The same value is available in Azure Portal by opening the Databricks workspace
-and selecting its workspace URL.
-
-## 6. Authenticate Databricks CLI Profiles
-
-Authenticate the account-admin profile:
-
-```bash
-databricks auth login \
-  --profile "$ACCOUNT_PROFILE" \
-  --host https://accounts.azuredatabricks.net \
-  --account-id "$ACCOUNT_ID" \
-  --skip-workspace
-```
-
-Authenticate the workspace-admin profile against the new workspace:
-
-```bash
-databricks auth login \
-  --profile "$WORKSPACE_PROFILE" \
-  --host "https://${WORKSPACE_URL#https://}"
-```
-If the workspace was deleted and recreated, then the workspace-admin profile may still point to the old workspace. If you encounter host conflict error then use following command to explicitly point profile to the new workspace:
-
-```bash
-# 1. Initiate login directly with the host
-databricks auth login --host https://${WORKSPACE_URL#https://}
-
-# 2. When prompted by the CLI terminal, type: dbai-dev-admin or whatever you set in WORKSPACE_PROFILE variable
-```
-
-Verify that the profile points to the new workspace:
-
-```bash
-databricks auth describe --profile $WORKSPACE_PROFILE
-```
-
-If an existing profile still points to the deleted workspace, the second login
-replaces its host and credentials.
-
-### Optional VS Code OAuth profile
-
-Complete this once on the machine where VS Code and the Databricks extension
-run:
-
-1. Install or enable the **Databricks** extension for Visual Studio Code.
-2. Open this repository in VS Code and open the Databricks **Configuration** view.
-3. Select **Auth Type**, then the gear icon for **Sign in to Databricks workspace**.
-4. Choose **OAuth (user to machine)** in the Command Palette.
-5. Create or select a local profile such as `aiarchitect` and complete browser sign-in.
-6. Confirm that the Configuration view shows the current workspace and OAuth authentication.
-
-The extension stores the OAuth profile for the Databricks CLI and SDKs. Do not
-commit credentials or generated `.databricks/` state. To verify the profile in
-a terminal:
-
-```bash
-export DATABRICKS_CONFIG_PROFILE="$WORKSPACE_PROFILE"
-export DATABRICKS_SQL_WAREHOUSE_ID="<serverless-sql-warehouse-id>"
-databricks auth describe --profile "$DATABRICKS_CONFIG_PROFILE"
-databricks current-user me --profile "$DATABRICKS_CONFIG_PROFILE"
-```
-
-For local App development, create the ignored root dotenv file when the
-repository provides `.env.example`:
-
-```bash
-cp .env.example .env
-# Edit .env and replace the placeholder warehouse ID.
-```
-
-The App loads this file when started from the repository. Authentication
-remains managed by the Databricks OAuth profile; do not put tokens in `.env`.
-
-## 7. Configure the Databricks Environment
-
-Run this as a Databricks account administrator and workspace administrator:
-
-```bash
-scripts/local/configure_databricks_environment.sh \
-  --environment "$ENVIRONMENT" \
-  --repo "$REPO" \
-  --subscription-id "$SUBSCRIPTION_ID" \
-  --deployment-client-id "$DEPLOYMENT_CLIENT_ID" \
-  --account-profile "$ACCOUNT_PROFILE" \
-  --workspace-profile "$WORKSPACE_PROFILE"
-```
-
-If the App will run SQL on behalf of a different user, add this argument to the
-same command:
-
-```text
---app-user "<databricks-user-email>"
-```
-
-The script is safe to rerun. It discovers or creates the current workspace's
-isolated catalog and SQL Warehouse, assigns the deployment service principal,
-grants it delegated `MANAGE` on the isolated catalog so Bootstrap can grant
-final App and OBO access, sets required workspace permissions, and writes the
-current catalog and warehouse values to the selected GitHub Environment.
-
-## 8. Load Current Workspace Values
-
-The Databricks configuration script updates GitHub Environment variables. Load
-the new values into the current local terminal before deploying locally:
-
-```bash
-export DBAI_CATALOG="$(gh variable get DBAI_CATALOG --repo "$REPO" --env "$ENVIRONMENT")"
-export DATABRICKS_SQL_WAREHOUSE_ID="$(gh variable get DATABRICKS_SQL_WAREHOUSE_ID --repo "$REPO" --env "$ENVIRONMENT")"
-export DBAI_APP_USER="$(gh variable get DBAI_APP_USER --repo "$REPO" --env "$ENVIRONMENT")"
-
-export DATABRICKS_HOST="https://${WORKSPACE_URL#https://}"
-export DATABRICKS_CONFIG_PROFILE="$WORKSPACE_PROFILE"
-```
-
-Verify the values:
-
-```bash
-printf 'Catalog: %s\n' "$DBAI_CATALOG"
-printf 'SQL Warehouse: %s\n' "$DATABRICKS_SQL_WAREHOUSE_ID"
-printf 'App user: %s\n' "$DBAI_APP_USER"
-```
-
-The catalog and warehouse are also visible in the Databricks workspace UI. The
-GitHub Environment is the preferred source for the values used by GitHub
-Actions.
-
-## 9. Clear Stale Local State
-
-Run this section after a destroy/recreate operation, or whenever a Bundle error
-mentions resources from an old workspace. Moving state to `/tmp` preserves it
-for troubleshooting without allowing it to control the new deployment.
-
-Clear values inherited from an old terminal, `.env` file, or shell profile:
-
-```bash
-unset DBAI_CATALOG
-unset DATABRICKS_SQL_WAREHOUSE_ID
-unset DATABRICKS_HOST
-unset DATABRICKS_BUNDLE_VAR_catalog
-unset DATABRICKS_BUNDLE_VAR_sql_warehouse_id
-```
-
-Move the target's local Bundle state aside:
-
-```bash
-if [[ -d ".databricks/bundle/${BUNDLE_TARGET}" ]]; then
-  mv ".databricks/bundle/${BUNDLE_TARGET}" \
-    "/tmp/dbai-bundle-${BUNDLE_TARGET}-$(date +%Y%m%d%H%M%S)"
-fi
-```
-
-Move cached catalog and warehouse discovery values aside:
-
-```bash
-if [[ -d "$STATE_DIR" ]]; then
-  state_backup="/tmp/dbai-state-${ENVIRONMENT}-$(date +%Y%m%d%H%M%S)"
-  mkdir -p "$state_backup"
-  for state_file in \
-    "${ENVIRONMENT}-catalog" \
-    "${ENVIRONMENT}-sql-warehouse-id"; do
-    if [[ -f "$STATE_DIR/$state_file" ]]; then
-      mv "$STATE_DIR/$state_file" "$state_backup/"
-    fi
-  done
-fi
-```
-
-Re-export the current values after cleanup:
-
-```bash
-export DBAI_CATALOG="$(gh variable get DBAI_CATALOG --repo "$REPO" --env "$ENVIRONMENT")"
-export DATABRICKS_SQL_WAREHOUSE_ID="$(gh variable get DATABRICKS_SQL_WAREHOUSE_ID --repo "$REPO" --env "$ENVIRONMENT")"
-export DBAI_APP_USER="$(gh variable get DBAI_APP_USER --repo "$REPO" --env "$ENVIRONMENT")"
-export DATABRICKS_HOST="https://${WORKSPACE_URL#https://}"
-export DATABRICKS_CONFIG_PROFILE="$WORKSPACE_PROFILE"
-```
-
-Do not delete the entire `~/.databrickscfg` file. It may contain profiles for
-other workspaces. Reauthenticate only the workspace profile when its host is
-stale.
-
-After a disposable environment is destroyed, remove only its dedicated local
-profiles and caches with:
-
-```bash
-scripts/local/cleanup_local_databricks.sh \
-  --environment "$ENVIRONMENT" \
-  --target "$BUNDLE_TARGET" \
-  --yes
-```
-
-This deletes only `dbai-$ENVIRONMENT` and `dbai-$ENVIRONMENT-admin` profiles,
-archives that environment's Bundle and discovery state under `/tmp`, and
-preserves the main Databricks config file and unrelated profiles. The teardown
-wrapper can perform the same cleanup after Azure deletion with
-`--cleanup-local-config`.
-
-## 10. Deploy the Workload
+## 6. Deploy the Workload
 
 The workload deployment updates the Bundle-managed jobs and App resource, and
 uploads the full `app/` directory to the Bundle workspace path. It does not
 start or deploy the App revision yet because the AI Search index is created by
 Bootstrap.
-
-### Local
-
-```bash
-export DBAI_ENVIRONMENT="$ENVIRONMENT"
-export DBAI_BUNDLE_TARGET="$BUNDLE_TARGET"
-export DBAI_RESOURCE_GROUP="$RESOURCE_GROUP"
-export DBAI_WORKSPACE_NAME="$WORKSPACE_NAME"
-export AZURE_SUBSCRIPTION_ID="$SUBSCRIPTION_ID"
-
-scripts/local/deploy_workload.sh
-```
 
 ### GitHub Actions
 
@@ -435,22 +163,10 @@ The workload must be deployed before Bootstrap because the Bootstrap workflow
 uses `--skip-deploy`. The App is activated and its revision is deployed by
 Bootstrap after the data and AI Search objects exist.
 
-## 11. Bootstrap Data and AI Search
+## 7. Bootstrap Data and AI Search
 
 Bootstrap creates the demo data, contract chunks, AI Search resources, and
 Genie-facing function. It also applies the final App and OBO user permissions.
-
-### Local
-
-```bash
-python3 scripts/local/bootstrap_demo_environment.py \
-  --target "$BUNDLE_TARGET" \
-  --warehouse-id "$DATABRICKS_SQL_WAREHOUSE_ID" \
-  --skip-deploy \
-  --app-name "dbai-${ENVIRONMENT}-supply-chain-agent" \
-  --user-principal "$DBAI_APP_USER"
-scripts/local/deploy_app.sh
-```
 
 ### GitHub Actions
 
@@ -483,7 +199,7 @@ The refresh job supports `INGESTION_MODE=full_rebuild`; otherwise it processes
 new, updated, and deleted files incrementally. Trigger AI Search synchronization
 after the refresh job completes.
 
-## 12. Synchronize and Validate AI Search
+## 8. Synchronize and Validate AI Search
 
 The index uses triggered synchronization. Bootstrap does not automatically
 start the sync.
@@ -501,7 +217,7 @@ Then run:
 python3 scripts/local/validate_demo_workspace.py --require-index
 ```
 
-## 13. Configure Genie
+## 9. Configure Genie
 
 Genie is the SQL-first conversational experience for structured inventory and
 vendor analysis, with optional contract retrieval through the
@@ -574,7 +290,7 @@ answers after each index synchronization, follow the
 [Contract Change Demo Runbook](05-contract-change-demo.md). The read-only
 function checks are in `sql/02_genie_smoke_tests.sql`.
 
-## 14. Use the Mosaic AI Agent App
+## 10. Use the Mosaic AI Agent App
 
 Open the deployed `supply_chain_agent` Databricks App and ask structured,
 contract, or mixed questions. The App uses an MLflow AgentServer, a Databricks

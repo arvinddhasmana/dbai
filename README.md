@@ -155,6 +155,7 @@ Deployment is intentionally split into separate lifecycles:
 | Workflow | Trigger | Scope |
 | --- | --- | --- |
 | [`Deploy Infrastructure`](.github/workflows/deploy-infrastructure.yml) | Manual | Azure resource groups and Databricks workspaces |
+| [`Configure Databricks Environment`](.github/workflows/configure-databricks-environment.yml) | Manual with protected environment approval | Databricks account/workspace access, catalog, SQL Warehouse, and GitHub variables |
 | [`Deploy Workload`](.github/workflows/deploy-workload.yml) | Workload changes on `main`, or manual | Databricks App, jobs, and Bundle resources |
 | [`Bootstrap Environment`](.github/workflows/bootstrap-environment.yml) | Manual | Catalog objects, sample data, contract chunks, AI Search, and Genie SQL function |
 | [`Destroy Environment`](.github/workflows/destroy-environment.yml) | Manual with confirmation | Databricks data, App, jobs, and deployment-owned Azure resource groups |
@@ -202,34 +203,46 @@ The script configures these GitHub Environment settings:
   `DATABRICKS_SQL_WAREHOUSE_ID`, `DBAI_APP_USER`, `MODEL_ENDPOINT`, and
   `AI_SEARCH_ENDPOINT`
 
-After the workspace is deployed, an authorized Databricks account and workspace
-administrator must configure each environment. Log in an account-admin profile
-and a workspace-admin profile, then run:
+After the workspace is deployed, run the protected **Configure Databricks
+Environment** workflow for the selected environment. It uses a separate
+Databricks OAuth M2M service principal, not the lower-privilege Azure deployment
+identity, and resolves the current workspace URL and ID from Azure on every run.
+The workflow is safe to rerun after workspace recreation.
 
-```bash
-databricks auth login \
-  --profile account-admin \
-  --host https://accounts.azuredatabricks.net \
-  --account-id <databricks-account-id> \
-  --skip-workspace
-databricks auth login --profile dbai-dev-admin --host https://<workspace-url>
-scripts/local/configure_databricks_environment.sh \
-  --environment dev \
-  --repo arvinddhasmana/dbai \
-  --subscription-id <subscription-id> \
-  --deployment-client-id <azure-client-id> \
-  --account-profile account-admin \
-  --workspace-profile dbai-dev-admin
-```
+### One-time Databricks administrator setup
 
-Use a separate profile such as `dbai-test-admin` or `dbai-prod-admin` for the
-other workspaces. Repeat for `test` and `prod`. The script discovers the
+An existing Databricks account administrator must perform these steps once:
+
+1. Create a dedicated Databricks-managed automation service principal, for
+  example `dbai-databricks-bootstrap-admin`.
+2. Grant it the **account admin** role. This is required for account service
+  principal registration and workspace assignment.
+3. Create a Databricks OAuth M2M secret for it with the `all-apis` scope. This
+  workflow manages account, SCIM, Unity Catalog, SQL Warehouse, and permission
+  APIs. Record the client ID and secret immediately; the secret is shown only
+  once.
+4. Assign the service principal to each target workspace and grant it workspace
+  administrator access. This is required for SCIM entitlements, SQL Warehouse
+  permissions, Unity Catalog grants, and endpoint permissions.
+5. In each GitHub Environment (`dev`, `test`, and `prod`), add these protected
+  values:
+
+  - Secret `DATABRICKS_ADMIN_CLIENT_ID`: the bootstrap service principal client ID
+  - Secret `DATABRICKS_ADMIN_CLIENT_SECRET`: its Databricks OAuth secret
+  - Variable `DATABRICKS_ACCOUNT_ID`: the Databricks account ID
+
+Configure required reviewers on environments where administrator approval is
+required, especially `prod`. Do not put the OAuth secret in a repository
+variable, commit it, or print it in logs.
+
+Run the workflow after **Deploy Infrastructure** and select the same
+environment. Optionally provide `app_user`; otherwise it uses the
+`DBAI_APP_USER` environment variable. The workflow discovers the
 workspace-specific isolated catalog, creates or reuses the environment SQL
 Warehouse, grants the deployment service principal the required prerequisites,
 and writes `DBAI_CATALOG`, `DATABRICKS_SQL_WAREHOUSE_ID`, and `DBAI_APP_USER` to
-only the selected GitHub Environment. Use `--app-user` when the administrator
-running setup is not the person who will use the App. Use `--catalog` or
-`--warehouse-id` to reuse named resources.
+only the selected GitHub Environment. The account administrator setup above is
+the only manual Databricks permission step.
 The Databricks account ID is shown in the Databricks account console under
 account settings. It is not the Azure subscription ID or the workspace ID.
 
@@ -246,7 +259,7 @@ configuration script verifies that the supplied ID is a live Entra application
 before registering or assigning its Databricks service principal.
 
 Azure `Contributor` does not grant Databricks data-plane permissions. The
-manual environment script grants workspace access, SQL Warehouse access, and
+protected configuration workflow grants workspace access, SQL Warehouse access, and
 catalog/schema prerequisites in the selected workspace. It also grants the
 deployment service principal `MANAGE` on the isolated catalog so the
 non-interactive Bootstrap workflow can delegate final access to the App service
@@ -270,11 +283,10 @@ the App revision. The AI Search helper obtains its bearer token from the
 non-interactive Azure CLI session. No long-lived credential is stored in the
 repository.
 
-The first-time order is **Deploy Infrastructure**, manual
-`configure_databricks_environment.sh`, **Deploy Workload**, and then
-**Bootstrap Environment**. Bootstrap uses `--skip-deploy`, so the workload must
-already be deployed. The App starts and deploys only after Bootstrap creates
-the data and AI Search objects.
+The first-time order is **Deploy Infrastructure**, **Configure Databricks
+Environment**, **Deploy Workload**, and then **Bootstrap Environment**. Bootstrap
+uses `--skip-deploy`, so the workload must already be deployed. The App starts
+and deploys only after Bootstrap creates the data and AI Search objects.
 
 If an App was created before App revision deployment was added, activate it
 after Bootstrap with the same helper used by the workflow:

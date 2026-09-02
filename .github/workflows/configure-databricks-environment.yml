@@ -1,0 +1,116 @@
+name: Configure Databricks Environment
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Environment to configure
+        required: true
+        type: choice
+        options:
+          - dev
+          - test
+          - prod
+        default: dev
+      app_user:
+        description: Databricks user for App on-behalf-of requests; leave blank to use the environment variable
+        required: false
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: dbai-configure-databricks-${{ inputs.environment }}
+  cancel-in-progress: false
+
+jobs:
+  configure:
+    name: Configure Databricks account and workspace access
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    env:
+      GH_TOKEN: ${{ github.token }}
+      AZURE_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+      DBAI_ENVIRONMENT: ${{ inputs.environment }}
+      DBAI_RESOURCE_GROUP: ${{ vars.DBAI_RESOURCE_GROUP }}
+      DBAI_WORKSPACE_NAME: ${{ vars.DBAI_WORKSPACE_NAME }}
+      DBAI_CATALOG: ${{ vars.DBAI_CATALOG }}
+      DATABRICKS_SQL_WAREHOUSE_ID: ${{ vars.DATABRICKS_SQL_WAREHOUSE_ID }}
+      DBAI_APP_USER: ${{ inputs.app_user || vars.DBAI_APP_USER }}
+      DATABRICKS_ACCOUNT_ID: ${{ vars.DATABRICKS_ACCOUNT_ID }}
+      DATABRICKS_CLIENT_ID: ${{ secrets.DATABRICKS_ADMIN_CLIENT_ID }}
+      DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_ADMIN_CLIENT_SECRET }}
+      DATABRICKS_AUTH_TYPE: oauth-m2m
+      DBAI_AUTH_MODE: oauth-m2m
+      MODEL_ENDPOINT: ${{ vars.MODEL_ENDPOINT || 'databricks-llama-4-maverick' }}
+      AI_SEARCH_ENDPOINT: ${{ vars.AI_SEARCH_ENDPOINT || 'globalmart-supply-chain-search' }}
+      MODEL_ENDPOINT_ID: ${{ vars.MODEL_ENDPOINT_ID }}
+      AI_SEARCH_ENDPOINT_ID: ${{ vars.AI_SEARCH_ENDPOINT_ID }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Validate configuration
+        run: |
+          test -n "$AZURE_SUBSCRIPTION_ID" || {
+            echo 'AZURE_SUBSCRIPTION_ID is not configured for this GitHub Environment.' >&2
+            exit 1
+          }
+          test -n "$AZURE_CLIENT_ID" || {
+            echo 'AZURE_CLIENT_ID is not configured for this GitHub Environment.' >&2
+            exit 1
+          }
+          test -n "$DATABRICKS_ACCOUNT_ID" || {
+            echo 'DATABRICKS_ACCOUNT_ID is not configured for this GitHub Environment.' >&2
+            exit 1
+          }
+          test -n "$DATABRICKS_CLIENT_ID" || {
+            echo 'DATABRICKS_ADMIN_CLIENT_ID is not configured for this GitHub Environment.' >&2
+            exit 1
+          }
+          test -n "$DATABRICKS_CLIENT_SECRET" || {
+            echo 'DATABRICKS_ADMIN_CLIENT_SECRET is not configured for this GitHub Environment.' >&2
+            exit 1
+          }
+          test -n "$DBAI_APP_USER" || {
+            echo 'DBAI_APP_USER is not configured. Set the environment variable or provide the app_user input.' >&2
+            exit 1
+          }
+
+      - name: Log in to Azure with OIDC
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+          auth-type: SERVICE_PRINCIPAL
+
+      - name: Install Azure Databricks CLI extension
+        run: az extension add --name databricks --only-show-errors
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - name: Install Python dependencies
+        run: python -m pip install --requirement requirements-dev.txt
+
+      - name: Install Databricks CLI
+        uses: databricks/setup-cli@main
+
+      - name: Configure Databricks environment
+        run: |
+          scripts/local/configure_databricks_environment.sh \
+            --environment "$DBAI_ENVIRONMENT" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --subscription-id "$AZURE_SUBSCRIPTION_ID" \
+            --deployment-client-id "$AZURE_CLIENT_ID" \
+            --auth-mode oauth-m2m \
+            --account-id "$DATABRICKS_ACCOUNT_ID" \
+            --app-user "$DBAI_APP_USER"
