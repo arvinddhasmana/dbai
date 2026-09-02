@@ -255,8 +255,10 @@ Use the same live Entra application client ID for both scripts. If more than
 one Entra application has the display name `dbai-github-actions`, pass it
 explicitly to the GitHub script with `--client-id <azure-client-id>`; the
 script will not guess between duplicate display names. The Databricks
-configuration script verifies that the supplied ID is a live Entra application
-before registering or assigning its Databricks service principal.
+configuration script validates the supplied ID format before registering or
+assigning its Databricks service principal. The Databricks account API performs
+the live application validation without requiring the GitHub OIDC identity to
+have Microsoft Graph directory-read permissions.
 
 Azure `Contributor` does not grant Databricks data-plane permissions. The
 protected configuration workflow grants workspace access, SQL Warehouse access, and

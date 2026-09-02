@@ -169,6 +169,12 @@ case "$auth_mode" in
     ;;
 esac
 
+if [[ ! "$deployment_client_id" =~ ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$ ]]; then
+  printf 'Deployment client ID is not a valid Entra application client ID: %s\n' "$deployment_client_id" >&2
+  printf 'Use the same client ID as the GitHub Environment secret AZURE_CLIENT_ID.\n' >&2
+  exit 1
+fi
+
 if [[ -z "${DATABRICKS_WORKSPACE_PROFILE:-}" && -z "${DATABRICKS_CONFIG_PROFILE:-}" ]]; then
   workspace_profile="dbai-${environment_name}-admin"
 fi
@@ -205,12 +211,6 @@ if [[ -z "$subscription_id" ]]; then
   subscription_id="$(az account show --query id --output tsv)"
 fi
 az account set --subscription "$subscription_id" --only-show-errors
-
-if ! az ad app show --id "$deployment_client_id" --query appId --output tsv >/dev/null 2>&1; then
-  printf 'Deployment client ID is not a live Entra application: %s\n' "$deployment_client_id" >&2
-  printf 'Use the same client ID as the GitHub Environment secret AZURE_CLIENT_ID.\n' >&2
-  exit 1
-fi
 
 resource_group="${DBAI_RESOURCE_GROUP:-rg-dbai-${environment_name}}"
 workspace_name="${DBAI_WORKSPACE_NAME:-dbai-${environment_name}}"
