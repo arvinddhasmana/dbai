@@ -85,6 +85,10 @@ jobs:
             echo 'GH_ADMIN_TOKEN is not configured for this GitHub Environment. Add a repository-authorized token so the workflow can update Environment variables.' >&2
             exit 1
           }
+          gh api "repos/${GITHUB_REPOSITORY}/environments/${DBAI_ENVIRONMENT}/variables?per_page=1" --silent || {
+            echo 'GH_ADMIN_TOKEN cannot read GitHub Environment variables. Use a fine-grained token with Variables: Read and write for this repository, or a classic PAT with repo scope.' >&2
+            exit 1
+          }
 
       - name: Log in to Azure with OIDC
         uses: azure/login@v2
