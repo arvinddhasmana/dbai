@@ -205,11 +205,12 @@ The script configures these GitHub Environment settings:
 
 The **Configure Databricks Environment** workflow also requires an environment
 secret named `GH_ADMIN_TOKEN`. Set it to a repository-authorized GitHub token
-with the repository permission **Variables: Read and write**. For a fine-grained
-PAT, limit repository access to `arvinddhasmana/dbai`; alternatively, use a
-classic PAT with the `repo` scope. The default `GITHUB_TOKEN` cannot update
-environment variables through the GitHub API, even
-when the workflow declares `actions: write`.
+with the repository permission **Environments: Read and write**.
+For a fine-grained PAT, select `arvinddhasmana` as the resource owner, limit
+repository access to `arvinddhasmana/dbai`, and approve the token if GitHub
+requires approval. Alternatively, use a classic PAT with the `repo` scope. The
+default `GITHUB_TOKEN` cannot update environment variables through the GitHub
+API, even when the workflow declares `actions: write`.
 
 After the workspace is deployed, run the protected **Configure Databricks
 Environment** workflow for the selected environment. It uses a separate

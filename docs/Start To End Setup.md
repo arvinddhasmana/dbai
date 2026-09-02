@@ -143,8 +143,10 @@ recreation. `DBAI_APP_USER` is an email address for the Databricks OBO user;
 the workflow creates the account user when needed, assigns it to the selected
 workspace, and waits for the assignment to propagate before applying permissions.
 The selected GitHub Environment must also contain a `GH_ADMIN_TOKEN` secret with
-the repository permission **Variables: Read and write**; a classic PAT requires
-the `repo` scope. The default `GITHUB_TOKEN` cannot update environment
+the repository permission **Environments: Read and write**.
+For a fine-grained token, select `arvinddhasmana` as resource owner and this
+repository as the only repository; approve it if required. A classic PAT
+requires the `repo` scope. The default `GITHUB_TOKEN` cannot update environment
 variables through the GitHub API.
 
 The account ID is distinct from the Azure subscription ID and workspace ID.

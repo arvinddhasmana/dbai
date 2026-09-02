@@ -86,7 +86,7 @@ jobs:
             exit 1
           }
           gh api "repos/${GITHUB_REPOSITORY}/environments/${DBAI_ENVIRONMENT}/variables?per_page=1" --silent || {
-            echo 'GH_ADMIN_TOKEN cannot read GitHub Environment variables. Use a fine-grained token with Variables: Read and write for this repository, or a classic PAT with repo scope.' >&2
+            echo 'GH_ADMIN_TOKEN was rejected by GitHub. Use a fine-grained token owned by the repository owner, limited to this repository with Environments: Read and write, and approve it if required; or use a classic PAT with repo scope.' >&2
             exit 1
           }
 
