@@ -1,4 +1,4 @@
-"""Start the MLflow AgentServer and custom chat page."""
+"""Start the MLflow AgentServer and custom contract chat page."""
 
 from pathlib import Path
 
@@ -7,12 +7,12 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from mlflow.genai.agent_server import AgentServer
 
-load_dotenv(Path(__file__).parents[2] / ".env")
+load_dotenv(Path(__file__).parents[3] / ".env")
 
-import agent_server.agent  # noqa: F401
+import agent_server.agent  # noqa: F401,E402
 
 
-APP_ROOT = Path(__file__).parents[1]
+APP_ROOT = Path(__file__).parents[2]
 agent_server = AgentServer("ResponsesAgent", enable_chat_proxy=False)
 app = agent_server.app
 app.mount("/static", StaticFiles(directory=APP_ROOT / "static"), name="static")

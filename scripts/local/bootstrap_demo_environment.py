@@ -72,6 +72,8 @@ def parse_args():
 
 def main():
     args = parse_args()
+    if args.app_name is None and args.user_principal is not None:
+        args.app_name = f"dbai-supply-chain-agent-{args.target}"
     if not args.warehouse_id:
         raise SystemExit("Set DATABRICKS_SQL_WAREHOUSE_ID or pass --warehouse-id.")
 

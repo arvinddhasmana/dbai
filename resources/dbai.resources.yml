@@ -5,36 +5,7 @@ variables:
   ai_search_endpoint:
     description: Existing AI Search endpoint used by the managed index.
     default: globalmart-supply-chain-search
-  model_endpoint:
-    description: Foundation model endpoint used by the custom supply-chain agent.
-    default: databricks-llama-4-maverick
-  sql_warehouse_id:
-    description: Serverless SQL warehouse used by the agent's read-only tools.
-    default: ""
-
 resources:
-  apps:
-    supply_chain_agent:
-      name: ${bundle.name}-${bundle.target}-supply-chain-agent
-      description: Custom GlobalMart supply-chain agent with SQL and contract retrieval.
-      source_code_path: ../app
-      config:
-        command: ["uv", "run", "start-server"]
-        env:
-          - name: MLFLOW_TRACKING_URI
-            value: databricks
-          - name: MLFLOW_REGISTRY_URI
-            value: databricks-uc
-          - name: MODEL_ENDPOINT
-            value: ${var.model_endpoint}
-          - name: DATABRICKS_SQL_WAREHOUSE_ID
-            value: ${var.sql_warehouse_id}
-          - name: DBAI_CATALOG
-            value: ${var.catalog}
-      user_api_scopes:
-        - sql
-        - model-serving
-
   jobs:
     # [CONTROL] Orchestrates contract landing discovery and Gold source refresh.
     refresh_vendor_contract_chunks:

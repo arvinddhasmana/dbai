@@ -11,7 +11,6 @@ include:
 
 sync:
   include:
-    - app/**
     - scripts/deployable/**
   exclude:
     - .azure/**

@@ -15,13 +15,6 @@ from databricks.sdk.service.vectorsearch import (
 
 IDENTIFIER_PATTERN = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 TABLES = (
-    "dim_products",
-    "dim_vendors",
-    "fact_inventory_status",
-    "contract_file_events_bronze",
-    "contract_file_manifest",
-    "contract_documents_silver",
-    "vendor_contract_chunks_index_source",
     "vendor_contract_chunks_index_rebuilt",
 )
 BOOTSTRAP_TABLES = (

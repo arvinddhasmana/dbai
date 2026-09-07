@@ -1,0 +1,26 @@
+bundle:
+  name: dbai-supply-chain-agent
+  engine: terraform
+
+include:
+  - resources/*.yml
+
+sync:
+  include:
+    - src/**
+    - static/**
+    - pyproject.toml
+    - app.yaml
+  exclude:
+    - tests/**
+    - '**/__pycache__/**'
+    - '**/*.pyc'
+
+targets:
+  dev:
+    mode: development
+    default: true
+  test:
+    mode: production
+  prod:
+    mode: production

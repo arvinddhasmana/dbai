@@ -1,0 +1,36 @@
+variables:
+  catalog:
+    description: Unity Catalog catalog used by this agent.
+    default: dbai_demo
+  ai_search_endpoint:
+    description: AI Search endpoint used by contract retrieval.
+    default: globalmart-supply-chain-search
+  model_endpoint:
+    description: Foundation model endpoint used by this agent.
+    default: databricks-llama-4-maverick
+  sql_warehouse_id:
+    description: SQL warehouse used by the governed retrieval function.
+    default: ""
+
+resources:
+  apps:
+    supply_chain_contract_agent:
+      name: ${bundle.name}-${bundle.target}
+      description: Vector-search-only GlobalMart contract agent.
+      source_code_path: .
+      config:
+        command: ["uv", "run", "start-server"]
+        env:
+          - name: MLFLOW_TRACKING_URI
+            value: databricks
+          - name: MLFLOW_REGISTRY_URI
+            value: databricks-uc
+          - name: MODEL_ENDPOINT
+            value: ${var.model_endpoint}
+          - name: DATABRICKS_SQL_WAREHOUSE_ID
+            value: ${var.sql_warehouse_id}
+          - name: DBAI_CATALOG
+            value: ${var.catalog}
+      user_api_scopes:
+        - sql
+        - model-serving

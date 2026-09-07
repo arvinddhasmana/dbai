@@ -4,11 +4,6 @@ set -euo pipefail
 REPOSITORY_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$REPOSITORY_ROOT"
 
-if ! command -v jq >/dev/null 2>&1; then
-  printf '%s\n' 'The jq command is required to locate the Bundle-uploaded App source.' >&2
-  exit 1
-fi
-
 environment_name="${DBAI_ENVIRONMENT:-dev}"
 target="${DBAI_BUNDLE_TARGET:-$environment_name}"
 subscription_id="${AZURE_SUBSCRIPTION_ID:-}"
@@ -17,7 +12,6 @@ workspace_name="${DBAI_WORKSPACE_NAME:-dbai-${environment_name}}"
 workspace_host="${DATABRICKS_HOST:-}"
 workspace_id="${DATABRICKS_WORKSPACE_ID:-}"
 catalog_name="${DBAI_CATALOG:?Set DBAI_CATALOG to the existing Unity Catalog catalog.}"
-warehouse_id="${DATABRICKS_SQL_WAREHOUSE_ID:?Set DATABRICKS_SQL_WAREHOUSE_ID to the existing SQL Warehouse ID.}"
 auth_mode="${DBAI_AUTH_MODE:-azure-cli}"
 
 if [[ -z "$workspace_host" ]]; then
@@ -50,9 +44,6 @@ if [[ -n "$workspace_id" ]]; then
 fi
 
 export DATABRICKS_HOST="$workspace_host"
-export DATABRICKS_BUNDLE_VAR_sql_warehouse_id="$warehouse_id"
-export DATABRICKS_BUNDLE_VAR_model_endpoint="${MODEL_ENDPOINT:-databricks-llama-4-maverick}"
-export DATABRICKS_BUNDLE_VAR_ai_search_endpoint="${AI_SEARCH_ENDPOINT:-globalmart-supply-chain-search}"
 export DBAI_CATALOG="$catalog_name"
 
 case "$auth_mode" in
@@ -77,31 +68,14 @@ case "$auth_mode" in
 esac
 
 databricks current-user me --output json >/dev/null
-existing_app_name="dbai-${target}-supply-chain-agent"
 databricks bundle validate -t "$target"
 bundle_deploy_args=(
   bundle deploy
   -t "$target"
-  "--var=sql_warehouse_id=${warehouse_id}"
   "--var=catalog=${catalog_name}"
-  "--var=model_endpoint=${MODEL_ENDPOINT:-databricks-llama-4-maverick}"
-  "--var=ai_search_endpoint=${AI_SEARCH_ENDPOINT:-globalmart-supply-chain-search}"
 )
 if ! databricks "${bundle_deploy_args[@]}"; then
-  if databricks apps get "$existing_app_name" --output json >/dev/null 2>&1; then
-    printf 'Binding existing App after Bundle state recovery: %s\n' "$existing_app_name"
-    databricks bundle deployment bind supply_chain_agent "$existing_app_name" \
-      -t "$target" \
-      --auto-approve
-    databricks "${bundle_deploy_args[@]}"
-  else
-    exit 1
-  fi
-fi
-
-bundle_summary="$(databricks bundle summary -t "$target" --output json)"
-if [[ -z "$(jq -r '.resources.apps.supply_chain_agent.name // empty' <<< "$bundle_summary")" ]]; then
-  printf '%s\n' 'Bundle summary did not contain the supply_chain_agent App.' >&2
   exit 1
 fi
-printf 'Bundle workload deployed. App activation is performed by Bootstrap Databricks Environment after AI Search setup. Target: %s\n' "$target"
+
+printf 'Shared platform workload deployed. Agent deployment is performed by Bootstrap after AI Search setup. Target: %s\n' "$target"

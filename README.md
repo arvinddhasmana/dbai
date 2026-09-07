@@ -7,6 +7,12 @@ The project supports two agent experiences over the same governed Unity Catalog 
 - **Databricks Genie**: SQL-first business exploration over inventory and vendor tables, with a Genie-facing SQL function for contract retrieval.
 - **Mosaic AI Agent in a Databricks App**: A custom conversational UI that grounds answers in governed inventory queries and active AI Search contract evidence.
 
+The Custom Agent is being separated from the data-analyst experience. Its
+runtime is contract-vector-search only: it exposes `search_vendor_contracts`,
+does not generate Text-to-SQL, does not access Bronze/Silver tables, and does
+not fall back to the Delta index source when the managed index is unavailable.
+The agent-specific Bundle and runtime are under `agents/supply_chain_agent/`.
+
 ## What This Demonstrates
 
 | Capability | Databricks service | Example |
@@ -61,7 +67,7 @@ The default catalog and schema are `globalmart.supply_chain`. Disposable deploym
 ## Repository Layout
 
 ```text
-app/                  Mosaic AI Agent and Databricks App UI
+agents/               Independent agent packages, Apps, tests, and Bundles
 scripts/local/        Local control-plane, bootstrap, validation, and teardown scripts
 scripts/deployable/   Databricks serverless notebook jobs synchronized by the Bundle
 resources/            Databricks Bundle resource definitions
@@ -72,7 +78,7 @@ sample_data/          Baseline and contract-change demonstration files
 tests/                Local Python tests
 ```
 
-Only `app/**` and `scripts/deployable/**` are synchronized by `databricks.yml`. Local scripts, SQL, documentation, sample data, tests, infrastructure source, caches, and development files are not Bundle payload.
+The root Bundle synchronizes only `scripts/deployable/**` for shared platform jobs. Each agent Bundle synchronizes its own source, UI, and package files. Local scripts, SQL, documentation, sample data, tests, infrastructure source, caches, and development files are not Bundle payload.
 
 ## Prerequisites
 
@@ -287,9 +293,9 @@ and the App are owned by the deployment identity.
 `Deploy Infrastructure` runs `scripts/local/deploy_infrastructure.sh`.
 `Deploy Workload` logs in with `azure/login`, sets `DBAI_AUTH_MODE=azure-cli`,
 and runs `scripts/local/deploy_workload.sh` against the existing workspace. The
-workload script updates the Bundle-managed jobs and App resource, and uploads
-the complete `app/` directory to the Bundle workspace path; it does not start
-or deploy the App revision before the AI Search index exists.
+workload script updates the shared Bundle-managed jobs. The agent Bundle owns
+the App source and is deployed by `scripts/local/deploy_app.sh` after the AI
+Search index exists.
 `Bootstrap Databricks Environment` uses the same OIDC session to run
 `scripts/local/bootstrap_demo_environment.py`. It creates the data and AI
 Search objects, grants the configured `DBAI_APP_USER` and App service
@@ -338,15 +344,14 @@ Genie is the SQL-first experience. Unity Catalog and SQL Warehouse enforce data 
 
 ## Use the Mosaic AI Agent App
 
-Open the deployed Databricks App and ask structured, contract, or mixed questions. The App uses an AgentServer hosted by Databricks Apps and a Databricks model-serving endpoint for final answer generation.
+Open the deployed Databricks App and ask vendor-contract questions. The App uses an AgentServer hosted by Databricks Apps and a Databricks model-serving endpoint for final answer generation.
 
 Example questions:
 
-- `Which inventory is delayed and what is its value?`
 - `What are the weather-delay rules for VEND-789?`
-- `Which vendor supplies the Thermal Winter Coats, and what is their current transit status?`
+- `What is the delay penalty for Alpine Apparel?`
 
-The App executes governed inventory and contract lookups server-side, then gives authoritative results to the answer writer. This avoids relying on model-generated SQL or unsupported textual tool calls. Contract answers include source-file and chunk citations when evidence is available.
+The App executes governed contract retrieval server-side, then gives authoritative results to the answer writer. It does not expose Text-to-SQL or inventory tools. Contract answers include source-file and chunk citations when evidence is available.
 
 The browser keeps conversation history in memory. Refreshing the page starts a new conversation.
 
@@ -367,7 +372,7 @@ After refreshing contract chunks, trigger the configured AI Search index synchro
 
 ```bash
 .venv/bin/python -m pytest -q
-.venv/bin/python -m compileall -q app/agent_server scripts/deployable
+.venv/bin/python -m compileall -q agents/supply_chain_agent/src/agent_server scripts/deployable
 bash -n scripts/local/deploy_demo_environment.sh scripts/local/destroy_demo_environment.sh
 ```
 

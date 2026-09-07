@@ -31,8 +31,8 @@ same business domain through three complementary paths:
 | Experience | Implementation | Primary interaction | Strength |
 |---|---|---|---|
 | Genie Agent | Databricks Genie space over Unity Catalog tables and `search_vendor_contracts` | User asks questions in the Genie UI | Fast SQL-first analysis with a managed conversational experience |
-| Custom Agent | Agent Framework orchestration in `app/agent_server/agent.py`, with governed tools in `data_tools.py` and SQL validation in `sql_guard.py` | User asks questions through the App, or the agent is invoked through its hosting boundary | Explicit routing, read-only SQL, retrieval grounding, and citations |
-| Databricks App | Databricks App serving the MLflow AgentServer and the UI in `app/static/index.html` | User interacts with a dedicated chat application | Branded interaction, conversation state, evidence presentation, and application controls |
+| Custom Agent | Agent Framework orchestration in `agents/supply_chain_agent/src/agent_server/agent.py`, with governed contract retrieval in `data_tools.py` | User asks contract questions through the App, or the agent is invoked through its hosting boundary | Vector retrieval grounding and citations |
+| Databricks App | Databricks App serving the MLflow AgentServer and UI in `agents/supply_chain_agent/static/index.html` | User interacts with a dedicated contract-search application | Branded interaction, conversation state, evidence presentation, and application controls |
 
 The custom agent and Databricks App are one deployed product boundary: the App
 hosts the custom agent. They are listed separately because the agent is the
@@ -56,12 +56,10 @@ All three experiences use the same governed resources:
 The custom agent follows this path:
 
 1. The user submits a natural-language question through the Databricks App.
-2. `agent.py` routes the question to structured SQL, contract retrieval, or both.
-3. `data_tools.py` executes allow-listed read-only SQL or queries the managed
-     AI Search index with optional vendor, tier, and region filters.
-4. `sql_guard.py` rejects disallowed SQL before the SQL Warehouse is called.
-5. The model combines governed facts and retrieved evidence, then returns
-     citations and a grounded answer to the App UI.
+2. `agent.py` routes the question to the contract retrieval tool.
+3. `data_tools.py` calls the governed SQL function backed by the managed AI
+    Search index with optional vendor, tier, and region filters.
+4. The model summarizes retrieved evidence and returns citations to the App UI.
 
 The Genie path uses the same tables and retrieval function through the Genie
 semantic layer. The App path adds explicit orchestration and user-visible
