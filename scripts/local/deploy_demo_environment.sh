@@ -140,7 +140,7 @@ export DATABRICKS_SQL_WAREHOUSE_ID="$warehouse_id"
 export MODEL_ENDPOINT="${MODEL_ENDPOINT:-databricks-llama-4-maverick}"
 export AI_SEARCH_ENDPOINT="${AI_SEARCH_ENDPOINT:-globalmart-supply-chain-search}"
 export DBAI_BUNDLE_TARGET="${DBAI_BUNDLE_TARGET:-dev}"
-export DBAI_APP_NAME="${DBAI_APP_NAME:-dbai-${DBAI_BUNDLE_TARGET}-supply-chain-agent}"
+export DBAI_APP_NAME="${DBAI_APP_NAME:-dbai-supply-chain-contract-ka-agent-${DBAI_BUNDLE_TARGET}}"
 if [[ -z "${DBAI_APP_USER:-}" ]]; then
   DBAI_APP_USER="$(databricks current-user me -p "$profile" -o json | python3 -c \
     'import json, sys; user = json.load(sys.stdin); print(user.get("userName") or user.get("user_name") or "")')"

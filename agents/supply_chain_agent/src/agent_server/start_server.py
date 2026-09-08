@@ -7,7 +7,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from mlflow.genai.agent_server import AgentServer
 
-load_dotenv(Path(__file__).parents[3] / ".env")
+load_dotenv(Path(__file__).parents[4] / ".env")
 
 import agent_server.agent  # noqa: F401,E402
 

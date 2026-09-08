@@ -1,5 +1,5 @@
 bundle:
-  name: dbai-supply-chain-agent
+  name: dbai-supply-chain-contract-ka-agent
   engine: terraform
 
 include:

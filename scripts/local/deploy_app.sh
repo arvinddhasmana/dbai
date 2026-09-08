@@ -13,7 +13,7 @@ fi
 target="${DBAI_BUNDLE_TARGET:-${DBAI_ENVIRONMENT:-dev}}"
 catalog_name="${DBAI_CATALOG:?Set DBAI_CATALOG to the existing Unity Catalog catalog.}"
 warehouse_id="${DATABRICKS_SQL_WAREHOUSE_ID:?Set DATABRICKS_SQL_WAREHOUSE_ID to the existing SQL Warehouse ID.}"
-app_name="${DBAI_APP_NAME:-dbai-supply-chain-agent-${target}}"
+app_name="${DBAI_APP_NAME:-dbai-supply-chain-contract-ka-agent-${target}}"
 
 workspace_host="${DATABRICKS_HOST:-}"
 if [[ -z "$workspace_host" && -n "${DATABRICKS_CONFIG_PROFILE:-}" ]]; then
