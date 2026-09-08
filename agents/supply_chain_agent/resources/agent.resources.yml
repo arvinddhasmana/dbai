@@ -34,3 +34,8 @@ resources:
       user_api_scopes:
         - sql
         - model-serving
+      resources:
+        - name: sql-warehouse
+          sql_warehouse:
+            id: ${var.sql_warehouse_id}
+            permission: CAN_USE

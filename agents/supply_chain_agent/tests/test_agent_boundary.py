@@ -29,3 +29,9 @@ def test_agent_has_no_text_to_sql_or_lifecycle_sources():
         assert "contract_documents_silver" not in source
         assert "vendor_contract_chunks_index_source" not in source
         assert "_vendor_contract_fallback" not in source
+
+
+def test_agent_returns_structured_contract_evidence_for_citations():
+    assert 'custom_outputs={"contract_evidence": evidence}' in AGENT_SOURCE
+    assert "source_file" in TOOLS_SOURCE
+    assert "chunk_text" in TOOLS_SOURCE

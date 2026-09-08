@@ -20,6 +20,10 @@
     .message { display:grid; grid-template-columns:70px 1fr; gap:16px; padding-bottom:22px; }
     .message + .message { border-top:1px solid var(--line); padding-top:22px; }
     .content { white-space:pre-wrap; overflow-wrap:anywhere; font-size:16px; line-height:1.55; }
+    .citation { display:inline; border:0; padding:0; color:var(--teal); background:transparent; font:inherit; text-decoration:underline; cursor:pointer; }
+    .evidence { margin-top:16px; padding:14px 16px; border-left:3px solid var(--teal); background:#f1f7f4; font:14px/1.5 Arial,sans-serif; }
+    .evidence strong { display:block; margin-bottom:6px; }
+    .evidence p { margin:6px 0 0; white-space:pre-wrap; }
     form { display:flex; gap:10px; padding:14px; border-top:1px solid var(--line); }
     textarea { flex:1; min-height:54px; padding:12px; border:1px solid var(--line); resize:vertical; font:15px Arial,sans-serif; }
     button[type=submit] { border:0; padding:0 20px; background:var(--teal); color:white; cursor:pointer; font-weight:700; }
@@ -39,8 +43,28 @@
     const messages = document.getElementById('messages'); const form = document.getElementById('chat-form'); const question = document.getElementById('question'); const submit = form.querySelector('button'); const history = [];
     function addMessage(role,text) { const row=document.createElement('div'); row.className='message'; const label=document.createElement('div'); label.className='role'; label.textContent=role; const body=document.createElement('div'); body.className='content'; body.textContent=text; row.append(label,body); messages.appendChild(row); messages.scrollTop=messages.scrollHeight; return body; }
     function responseText(payload) { const parts=(payload?.output||[]).flatMap(item=>item.content||[]).filter(part=>part.type==='output_text'||part.type==='text').map(part=>part.text).filter(Boolean); return parts.join('\n')||'The agent did not return a final answer.'; }
+    function responseEvidence(payload) { return payload?.custom_outputs?.contract_evidence || {}; }
+    function renderAnswer(body, text, evidence) {
+      const citationPattern=/\[([^,\]]+),\s*chunk\s+(\d+)\]/g;
+      let cursor=0; let match;
+      const rows=Array.isArray(evidence.rows) ? evidence.rows : [];
+      while ((match=citationPattern.exec(text))) {
+        body.append(document.createTextNode(text.slice(cursor, match.index)));
+        const sourceFile=match[1].trim(); const chunkIndex=Number(match[2]);
+        const citation=document.createElement('button'); citation.className='citation'; citation.type='button'; citation.textContent=match[0];
+        const row=rows.find(item=>item.source_file===sourceFile && Number(item.chunk_index)===chunkIndex);
+        citation.addEventListener('click',()=>{
+          const panel=document.createElement('div'); panel.className='evidence';
+          const heading=document.createElement('strong'); heading.textContent=`${sourceFile} / chunk ${chunkIndex}`; panel.appendChild(heading);
+          const detail=document.createElement('p'); detail.textContent=row?.chunk_text || 'The cited evidence is not available in this response.'; panel.appendChild(detail);
+          citation.replaceWith(panel);
+        });
+        body.append(citation); cursor=citationPattern.lastIndex;
+      }
+      body.append(document.createTextNode(text.slice(cursor)));
+    }
     document.querySelectorAll('.prompt').forEach(button=>button.addEventListener('click',()=>{question.value=button.textContent;question.focus();}));
-    form.addEventListener('submit',async event=>{event.preventDefault();const text=question.value.trim();if(!text)return;addMessage('You',text);history.push({role:'user',content:text});question.value='';submit.disabled=true;const pending=addMessage('Assistant','Searching active contract evidence...');try{const response=await fetch('/invocations',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({input:history})});const payload=await response.json();if(!response.ok)throw new Error(payload.detail||payload.message||'The agent request failed.');const answer=responseText(payload);pending.textContent=answer;history.push({role:'assistant',content:answer});}catch(error){pending.textContent=`Unable to complete the request: ${error.message}`;}finally{submit.disabled=false;question.focus();}});
+    form.addEventListener('submit',async event=>{event.preventDefault();const text=question.value.trim();if(!text)return;addMessage('You',text);history.push({role:'user',content:text});question.value='';submit.disabled=true;const pending=addMessage('Assistant','Searching active contract evidence...');try{const response=await fetch('/invocations',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({input:history})});const payload=await response.json();if(!response.ok)throw new Error(payload.detail||payload.message||'The agent request failed.');const answer=responseText(payload);pending.textContent='';renderAnswer(pending,answer,responseEvidence(payload));history.push({role:'assistant',content:answer});}catch(error){pending.textContent=`Unable to complete the request: ${error.message}`;}finally{submit.disabled=false;question.focus();}});
   </script>
 </body>
 </html>

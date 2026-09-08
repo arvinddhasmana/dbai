@@ -1,6 +1,7 @@
 """GlobalMart vector-search contract agent and MLflow handlers."""
 
 import asyncio
+import json
 import os
 import re
 import uuid
@@ -89,7 +90,15 @@ def _prepare_runner_input(items):
     return prepared
 
 
-def _response(text):
+def _response(text, search_result):
+    try:
+        evidence = json.loads(search_result)
+    except json.JSONDecodeError:
+        evidence = {
+            "ok": False,
+            "error_code": "CONTRACT_SEARCH_INVALID_RESPONSE",
+            "message": "Contract search returned an invalid response.",
+        }
     return ResponsesAgentResponse(
         output=[
             {
@@ -98,7 +107,8 @@ def _response(text):
                 "role": "assistant",
                 "content": [{"type": "output_text", "text": text}],
             }
-        ]
+        ],
+        custom_outputs={"contract_evidence": evidence},
     )
 
 
@@ -135,4 +145,4 @@ async def invoke_handler(request: ResponsesAgentRequest) -> ResponsesAgentRespon
         {"role": "user", "content": question},
     ]
     result = await Runner.run(create_answer_agent(), answer_input)
-    return _response(result.final_output or "I could not produce an answer.")
+    return _response(result.final_output or "I could not produce an answer.", search_result)

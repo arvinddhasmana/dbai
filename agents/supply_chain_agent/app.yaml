@@ -5,3 +5,5 @@ env:
     value: "databricks"
   - name: MLFLOW_REGISTRY_URI
     value: "databricks-uc"
+  - name: DATABRICKS_SQL_WAREHOUSE_ID
+    valueFrom: "sql-warehouse"
