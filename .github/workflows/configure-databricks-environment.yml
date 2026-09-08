@@ -112,6 +112,8 @@ jobs:
 
       - name: Install Databricks CLI
         uses: databricks/setup-cli@main
+        with:
+          version: 1.15.0
 
       - name: Configure Databricks environment
         run: |

@@ -8,6 +8,18 @@ variables:
   model_endpoint:
     description: Foundation model endpoint used by this agent.
     default: databricks-llama-4-maverick
+  mlflow_experiment_name:
+    description: MLflow experiment used for agent traces and evaluation runs.
+    default: /Shared/globalmart-supply-chain-agent-uc-dev
+  mlflow_trace_catalog:
+    description: Unity Catalog catalog used for MLflow trace tables.
+    default: globalmart
+  mlflow_trace_schema:
+    description: Unity Catalog schema used for MLflow trace tables.
+    default: supply_chain
+  mlflow_trace_table_prefix:
+    description: Prefix for MLflow trace tables in the trace schema.
+    default: contract_agent_traces
   sql_warehouse_id:
     description: SQL warehouse used by the governed retrieval function.
     default: ""
@@ -25,9 +37,19 @@ resources:
             value: databricks
           - name: MLFLOW_REGISTRY_URI
             value: databricks-uc
+          - name: MLFLOW_EXPERIMENT_NAME
+            value: ${var.mlflow_experiment_name}
+          - name: MLFLOW_TRACE_CATALOG
+            value: ${var.mlflow_trace_catalog}
+          - name: MLFLOW_TRACE_SCHEMA
+            value: ${var.mlflow_trace_schema}
+          - name: MLFLOW_TRACE_TABLE_PREFIX
+            value: ${var.mlflow_trace_table_prefix}
           - name: MODEL_ENDPOINT
             value: ${var.model_endpoint}
           - name: DATABRICKS_SQL_WAREHOUSE_ID
+            value: ${var.sql_warehouse_id}
+          - name: MLFLOW_TRACING_SQL_WAREHOUSE_ID
             value: ${var.sql_warehouse_id}
           - name: DBAI_CATALOG
             value: ${var.catalog}

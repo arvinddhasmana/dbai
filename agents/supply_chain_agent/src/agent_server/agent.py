@@ -13,12 +13,14 @@ from mlflow.genai.agent_server import invoke
 from mlflow.types.responses import ResponsesAgentRequest, ResponsesAgentResponse
 
 from agent_server.data_tools import _search_vendor_contracts, search_vendor_contracts
+from agent_server.observability import configure_mlflow, start_agent_span
 
 
 CATALOG = os.getenv("DBAI_CATALOG", "globalmart")
 set_default_openai_client(AsyncDatabricksOpenAI())
 set_default_openai_api("chat_completions")
 mlflow.openai.autolog()
+configure_mlflow()
 
 ANSWER_INSTRUCTIONS = f"""
 You are the GlobalMart Contract Intelligence agent. Answer only questions
@@ -132,17 +134,34 @@ async def invoke_handler(request: ResponsesAgentRequest) -> ResponsesAgentRespon
     prepared_input = _prepare_runner_input(request.input)
     question = _latest_user_text(prepared_input)
     search_text, vendor_id = _search_parameters(question)
-    search_result = await asyncio.to_thread(
-        _search_vendor_contracts,
-        search_text,
-        vendor_id=vendor_id,
-    )
-    answer_input = [
+    with start_agent_span(
+        "contract_agent.invoke",
         {
-            "role": "system",
-            "content": f"Retrieved contract evidence JSON:\n{search_result}",
+            "vendor_filter_present": bool(vendor_id),
+            "question_length": len(question),
+            "model_endpoint": os.getenv("MODEL_ENDPOINT", "databricks-llama-4-maverick"),
         },
-        {"role": "user", "content": question},
-    ]
-    result = await Runner.run(create_answer_agent(), answer_input)
-    return _response(result.final_output or "I could not produce an answer.", search_result)
+    ) as span:
+        search_result = await asyncio.to_thread(
+            _search_vendor_contracts,
+            search_text,
+            vendor_id=vendor_id,
+        )
+        answer_input = [
+            {
+                "role": "system",
+                "content": f"Retrieved contract evidence JSON:\n{search_result}",
+            },
+            {"role": "user", "content": question},
+        ]
+        result = await Runner.run(create_answer_agent(), answer_input)
+        response = _response(result.final_output or "I could not produce an answer.", search_result)
+        evidence = response.custom_outputs["contract_evidence"]
+        span.set_outputs(
+            {
+                "ok": evidence.get("ok", False),
+                "row_count": evidence.get("row_count", 0),
+                "error_code": evidence.get("error_code"),
+            }
+        )
+        return response

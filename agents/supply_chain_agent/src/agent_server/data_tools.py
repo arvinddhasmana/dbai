@@ -8,6 +8,7 @@ import time
 from agents import function_tool
 
 from agent_server.utils import get_user_workspace_client
+from agent_server.observability import start_retriever_span
 
 
 logger = logging.getLogger(__name__)
@@ -97,46 +98,57 @@ def _search_vendor_contracts(search_text, vendor_id=None, support_tier=None, reg
             "retryable": False,
         })
 
-    try:
-        rows = _search_vendor_contract_rows(
-            search_text,
-            vendor_id=vendor_id,
-            support_tier=support_tier,
-            region=region,
-        )
-    except Exception as error:
-        message = str(error).lower()
-        if "permission" in message or "unauthorized" in message or "forbidden" in message:
-            error_code = "CONTRACT_SEARCH_UNAUTHORIZED"
-            retryable = False
-        elif "invalid" in message or "parameter" in message:
-            error_code = "CONTRACT_SEARCH_INVALID_REQUEST"
-            retryable = False
-        else:
-            error_code = "CONTRACT_SEARCH_UNAVAILABLE"
-            retryable = True
-        logger.exception(
-            "Contract search failed: error_code=%s catalog=%s function=%s "
-            "warehouse_configured=%s",
-            error_code,
-            CATALOG,
-            CONTRACT_SEARCH_FUNCTION,
-            bool(os.getenv("DATABRICKS_SQL_WAREHOUSE_ID")),
-        )
-        return json.dumps({
-            "ok": False,
-            "tool": "search_vendor_contracts",
-            "error_code": error_code,
-            "message": "Contract search is temporarily unavailable.",
-            "retryable": retryable,
-        })
+    with start_retriever_span(
+        "contract_search",
+        {
+            "vendor_filter_present": bool(vendor_id),
+            "support_tier_filter_present": bool(support_tier),
+            "region_filter_present": bool(region),
+            "query_length": len(search_text),
+        },
+    ) as span:
+        try:
+            rows = _search_vendor_contract_rows(
+                search_text,
+                vendor_id=vendor_id,
+                support_tier=support_tier,
+                region=region,
+            )
+        except Exception as error:
+            message = str(error).lower()
+            if "permission" in message or "unauthorized" in message or "forbidden" in message:
+                error_code = "CONTRACT_SEARCH_UNAUTHORIZED"
+                retryable = False
+            elif "invalid" in message or "parameter" in message:
+                error_code = "CONTRACT_SEARCH_INVALID_REQUEST"
+                retryable = False
+            else:
+                error_code = "CONTRACT_SEARCH_UNAVAILABLE"
+                retryable = True
+            logger.exception(
+                "Contract search failed: error_code=%s catalog=%s function=%s "
+                "warehouse_configured=%s",
+                error_code,
+                CATALOG,
+                CONTRACT_SEARCH_FUNCTION,
+                bool(os.getenv("DATABRICKS_SQL_WAREHOUSE_ID")),
+            )
+            span.set_outputs({"ok": False, "error_code": error_code})
+            return json.dumps({
+                "ok": False,
+                "tool": "search_vendor_contracts",
+                "error_code": error_code,
+                "message": "Contract search is temporarily unavailable.",
+                "retryable": retryable,
+            })
 
-    return json.dumps({
-        "ok": True,
-        "tool": "search_vendor_contracts",
-        "row_count": len(rows),
-        "rows": rows,
-    }, default=str)
+        span.set_outputs({"ok": True, "row_count": len(rows)})
+        return json.dumps({
+            "ok": True,
+            "tool": "search_vendor_contracts",
+            "row_count": len(rows),
+            "rows": rows,
+        }, default=str)
 
 
 search_vendor_contracts = function_tool(

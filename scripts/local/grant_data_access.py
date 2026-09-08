@@ -26,6 +26,12 @@ BOOTSTRAP_TABLES = (
     "contract_documents_silver",
     "vendor_contract_chunks_index_source",
 )
+TRACE_TABLES = (
+    "contract_agent_traces_otel_annotations",
+    "contract_agent_traces_otel_logs",
+    "contract_agent_traces_otel_metrics",
+    "contract_agent_traces_otel_spans",
+)
 
 
 def sql_identifier(value, label):
@@ -111,6 +117,7 @@ def grant_sql_access(client, catalog, principal, warehouse_id):
     statements = [
         f"GRANT USE CATALOG ON CATALOG {catalog} TO {principal_sql}",
         f"GRANT USE SCHEMA ON SCHEMA {catalog}.`supply_chain` TO {principal_sql}",
+        f"GRANT CREATE TABLE ON SCHEMA {catalog}.`supply_chain` TO {principal_sql}",
     ]
     statements.extend(
         f"GRANT SELECT ON TABLE {catalog}.`supply_chain`.`{table}` TO {principal_sql}"
@@ -119,6 +126,11 @@ def grant_sql_access(client, catalog, principal, warehouse_id):
     statements.append(
         f"GRANT EXECUTE ON FUNCTION {catalog}.`supply_chain`.`search_vendor_contracts` "
         f"TO {principal_sql}"
+    )
+    statements.extend(
+        f"GRANT SELECT, MODIFY ON TABLE {catalog}.`supply_chain`.`{table}` "
+        f"TO {principal_sql}"
+        for table in TRACE_TABLES
     )
     for statement in statements:
         execute_sql(client, statement, warehouse_id)

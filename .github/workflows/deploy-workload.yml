@@ -75,6 +75,8 @@ jobs:
 
       - name: Install Databricks CLI
         uses: databricks/setup-cli@main
+        with:
+          version: 1.15.0
 
       - name: Deploy Bundle workload
         run: scripts/local/deploy_workload.sh

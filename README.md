@@ -108,6 +108,10 @@ export DBAI_CATALOG=<catalog-name>
 export DBAI_APP_USER=<databricks-username>
 ```
 
+Use Databricks CLI v1.15.0 or newer for App Bundle deployment. CLI v1.14.1 has
+an Apps API update-mask regression. `scripts/local/deploy_app.sh` detects older
+versions and uses the compatibility deployment path automatically.
+
 Validate and deploy the Bundle:
 
 ```bash

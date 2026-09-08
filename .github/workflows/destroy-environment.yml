@@ -96,6 +96,8 @@ jobs:
 
       - name: Install Databricks CLI
         uses: databricks/setup-cli@main
+        with:
+          version: 1.15.0
 
       - name: Destroy environment
         run: scripts/local/destroy_demo_environment.sh --yes

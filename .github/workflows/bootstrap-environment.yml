@@ -78,6 +78,8 @@ jobs:
 
       - name: Install Databricks CLI
         uses: databricks/setup-cli@main
+        with:
+          version: 1.15.0
 
       - name: Bootstrap data and AI Search
         run: |

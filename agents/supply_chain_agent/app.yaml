@@ -5,5 +5,15 @@ env:
     value: "databricks"
   - name: MLFLOW_REGISTRY_URI
     value: "databricks-uc"
+  - name: MLFLOW_EXPERIMENT_NAME
+    value: "/Shared/globalmart-supply-chain-agent-uc-dev"
+  - name: MLFLOW_TRACE_CATALOG
+    value: "globalmart"
+  - name: MLFLOW_TRACE_SCHEMA
+    value: "supply_chain"
+  - name: MLFLOW_TRACE_TABLE_PREFIX
+    value: "contract_agent_traces"
   - name: DATABRICKS_SQL_WAREHOUSE_ID
+    valueFrom: "sql-warehouse"
+  - name: MLFLOW_TRACING_SQL_WAREHOUSE_ID
     valueFrom: "sql-warehouse"

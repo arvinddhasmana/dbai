@@ -14,6 +14,33 @@ target="${DBAI_BUNDLE_TARGET:-${DBAI_ENVIRONMENT:-dev}}"
 catalog_name="${DBAI_CATALOG:?Set DBAI_CATALOG to the existing Unity Catalog catalog.}"
 warehouse_id="${DATABRICKS_SQL_WAREHOUSE_ID:?Set DATABRICKS_SQL_WAREHOUSE_ID to the existing SQL Warehouse ID.}"
 app_name="${DBAI_APP_NAME:-dbai-supply-agent-${target}}"
+app_resource_key="${DBAI_APP_RESOURCE_KEY:-supply_chain_contract_agent}"
+mlflow_experiment_name="${MLFLOW_EXPERIMENT_NAME:-/Shared/globalmart-supply-chain-agent-uc-${target}}"
+
+if [[ "$mlflow_experiment_name" != /* ]]; then
+  printf 'MLFLOW_EXPERIMENT_NAME must be a workspace-absolute path such as /Shared/globalmart-supply-chain-agent-%s\n' "$target" >&2
+  exit 1
+fi
+
+if [[ -n "${DBAI_CLI_BIN:-}" ]]; then
+  if [[ ! -x "$DBAI_CLI_BIN" ]]; then
+    printf 'DBAI_CLI_BIN is not executable: %s\n' "$DBAI_CLI_BIN" >&2
+    exit 1
+  fi
+  databricks() { "$DBAI_CLI_BIN" "$@"; }
+fi
+
+cli_version="$(databricks version | sed -n 's/^Databricks CLI v//p')"
+if [[ -z "$cli_version" ]]; then
+  printf '%s\n' 'Could not determine the Databricks CLI version.' >&2
+  exit 1
+fi
+
+native_bundle_deploy_supported=true
+if [[ "$(printf '%s\n' '1.15.0' "$cli_version" | sort -V | head -n 1)" != '1.15.0' ]]; then
+  native_bundle_deploy_supported=false
+  printf 'Databricks CLI %s has the Apps update-mask regression; using the compatibility fallback. Upgrade to v1.15.0 or newer for native Bundle deployment.\n' "$cli_version" >&2
+fi
 
 workspace_host="${DATABRICKS_HOST:-}"
 if [[ -z "$workspace_host" && -n "${DATABRICKS_CONFIG_PROFILE:-}" ]]; then
@@ -62,11 +89,24 @@ ensure_app_running() {
 
 databricks current-user me --output json >/dev/null
 databricks bundle validate -t "$target"
-databricks bundle sync -t "$target" \
-  "--var=sql_warehouse_id=${warehouse_id}" \
-  "--var=catalog=${catalog_name}" \
+bundle_vars=(
+  "--var=sql_warehouse_id=${warehouse_id}"
+  "--var=catalog=${catalog_name}"
   "--var=model_endpoint=${MODEL_ENDPOINT:-databricks-llama-4-maverick}"
+  "--var=mlflow_experiment_name=${mlflow_experiment_name}"
+  "--var=mlflow_trace_catalog=${MLFLOW_TRACE_CATALOG:-${catalog_name}}"
+  "--var=mlflow_trace_schema=${MLFLOW_TRACE_SCHEMA:-supply_chain}"
+  "--var=mlflow_trace_table_prefix=${MLFLOW_TRACE_TABLE_PREFIX:-contract_agent_traces}"
+)
 
+if [[ "$native_bundle_deploy_supported" == true ]]; then
+  databricks bundle deploy -t "$target" "${bundle_vars[@]}"
+  databricks bundle run "$app_resource_key" -t "$target" --restart "${bundle_vars[@]}"
+  printf 'Databricks App deployed and restarted through the Bundle: %s\n' "$app_name"
+  exit 0
+fi
+
+databricks bundle sync -t "$target" "${bundle_vars[@]}"
 ensure_app_running
 app_source_path="$(databricks bundle summary -t "$target" --output json \
   | jq -r '.workspace.file_path // empty')"
@@ -79,4 +119,4 @@ databricks apps deploy "$app_name" \
   --skip-validation \
   --auto-approve
 
-printf 'Databricks App deployed from Bundle-synced source: %s\n' "$app_name"
+printf 'Databricks App deployed from compatibility fallback: %s\n' "$app_name"
