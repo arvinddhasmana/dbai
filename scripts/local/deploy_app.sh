@@ -13,7 +13,7 @@ fi
 target="${DBAI_BUNDLE_TARGET:-${DBAI_ENVIRONMENT:-dev}}"
 catalog_name="${DBAI_CATALOG:?Set DBAI_CATALOG to the existing Unity Catalog catalog.}"
 warehouse_id="${DATABRICKS_SQL_WAREHOUSE_ID:?Set DATABRICKS_SQL_WAREHOUSE_ID to the existing SQL Warehouse ID.}"
-app_name="${DBAI_APP_NAME:-dbai-supply-chain-contract-ka-agent-${target}}"
+app_name="${DBAI_APP_NAME:-dbai-supply-agent-${target}}"
 
 workspace_host="${DATABRICKS_HOST:-}"
 if [[ -z "$workspace_host" && -n "${DATABRICKS_CONFIG_PROFILE:-}" ]]; then
@@ -68,8 +68,13 @@ databricks bundle deploy -t "$target" \
   "--var=model_endpoint=${MODEL_ENDPOINT:-databricks-llama-4-maverick}" \
   "--var=ai_search_endpoint=${AI_SEARCH_ENDPOINT:-globalmart-supply-chain-search}"
 
-app_source_path="$AGENT_ROOT"
 ensure_app_running
+app_source_path="$(databricks bundle summary -t "$target" --output json \
+  | jq -r '.workspace.file_path // empty')"
+if [[ -z "$app_source_path" ]]; then
+  printf 'Could not resolve the Bundle workspace file path for App deployment.\n' >&2
+  exit 1
+fi
 databricks apps deploy "$app_name" \
   --source-code-path "$app_source_path" \
   --skip-validation \

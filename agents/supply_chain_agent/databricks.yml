@@ -1,6 +1,6 @@
 bundle:
   name: dbai-supply-chain-contract-ka-agent
-  engine: terraform
+  engine: direct
 
 include:
   - resources/*.yml
@@ -12,6 +12,10 @@ sync:
     - pyproject.toml
     - app.yaml
   exclude:
+    - .databricks/**
+    - README.md
+    - databricks.yml
+    - resources/**
     - tests/**
     - '**/__pycache__/**'
     - '**/*.pyc'

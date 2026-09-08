@@ -15,7 +15,7 @@ variables:
 resources:
   apps:
     supply_chain_contract_agent:
-      name: ${bundle.name}-${bundle.target}
+      name: dbai-supply-agent-${bundle.target}
       description: Vector-search-only GlobalMart contract agent.
       source_code_path: .
       config:

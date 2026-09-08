@@ -125,7 +125,7 @@ python3 scripts/local/bootstrap_demo_environment.py \
   --target dev \
   --warehouse-id "$DATABRICKS_SQL_WAREHOUSE_ID" \
   --skip-deploy \
-  --app-name dbai-dev-supply-chain-agent \
+  --app-name dbai-supply-agent-dev \
   --user-principal "$DBAI_APP_USER"
 ```
 

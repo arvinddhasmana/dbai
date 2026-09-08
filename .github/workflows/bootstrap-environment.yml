@@ -37,7 +37,7 @@ jobs:
       AI_SEARCH_ENDPOINT: ${{ vars.AI_SEARCH_ENDPOINT || 'globalmart-supply-chain-search' }}
       DBAI_AUTH_MODE: azure-cli
       DATABRICKS_AUTH_TYPE: azure-cli
-      DBAI_APP_NAME: dbai-supply-chain-contract-ka-agent-${{ inputs.environment }}
+      DBAI_APP_NAME: dbai-supply-agent-${{ inputs.environment }}
       DBAI_APP_USER: ${{ vars.DBAI_APP_USER }}
       DBAI_BOOTSTRAP_PRINCIPAL: ${{ secrets.AZURE_CLIENT_ID }}
 

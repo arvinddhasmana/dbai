@@ -4,7 +4,7 @@
 
 bundle:
   name: dbai
-  engine: terraform
+  engine: direct
 
 include:
   - resources/*.yml
@@ -14,17 +14,29 @@ sync:
     - scripts/deployable/**
   exclude:
     - .azure/**
+    - .databricks/**
+    - .dbai-state/**
     - .env.example
+    - .env
+    - .github/**
+    - .git/**
     - .vscode/**
     - .venv/**
     - .pytest_cache/**
-    - .dbai-state/**
+    - agents/**
+    - app/**
+    - common_utils/**
     - docs/**
     - infra/**
     - requirements-dev.txt
     - sample_data/**
     - tests/**
+    - sql/**
     - .gitignore
+    - README.md
+    - databricks.yml
+    - resources/**
+    - scripts/local/**
     - '**/__pycache__/**'
     - '**/*.pyc'
 
