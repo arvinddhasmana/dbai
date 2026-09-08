@@ -69,15 +69,9 @@ databricks bundle deploy -t "$target" \
   "--var=ai_search_endpoint=${AI_SEARCH_ENDPOINT:-globalmart-supply-chain-search}"
 
 ensure_app_running
-app_source_path="$(databricks bundle summary -t "$target" --output json \
-  | jq -r '.workspace.file_path // empty')"
-if [[ -z "$app_source_path" ]]; then
-  printf 'Could not resolve the Bundle workspace file path for App deployment.\n' >&2
-  exit 1
-fi
-databricks apps deploy "$app_name" \
-  --source-code-path "$app_source_path" \
-  --skip-validation \
-  --auto-approve
+databricks bundle run supply_chain_contract_agent -t "$target" --restart \
+  "--var=sql_warehouse_id=${warehouse_id}" \
+  "--var=catalog=${catalog_name}" \
+  "--var=model_endpoint=${MODEL_ENDPOINT:-databricks-llama-4-maverick}"
 
-printf 'Databricks App deployed after Bootstrap: %s\n' "$app_name"
+printf 'Databricks App restarted from Bundle configuration: %s\n' "$app_name"

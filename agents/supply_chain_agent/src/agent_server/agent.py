@@ -1,6 +1,8 @@
 """GlobalMart vector-search contract agent and MLflow handlers."""
 
+import asyncio
 import os
+import re
 import uuid
 
 import mlflow
@@ -9,7 +11,7 @@ from databricks_openai import AsyncDatabricksOpenAI
 from mlflow.genai.agent_server import invoke
 from mlflow.types.responses import ResponsesAgentRequest, ResponsesAgentResponse
 
-from agent_server.data_tools import search_vendor_contracts
+from agent_server.data_tools import _search_vendor_contracts, search_vendor_contracts
 
 
 CATALOG = os.getenv("DBAI_CATALOG", "globalmart")
@@ -42,6 +44,21 @@ def create_agent():
         model=os.getenv("MODEL_ENDPOINT", "databricks-llama-4-maverick"),
         model_settings=ModelSettings(temperature=0),
         tools=[search_vendor_contracts],
+    )
+
+
+def create_answer_agent():
+    return Agent(
+        name="GlobalMart Contract Answer Agent",
+        instructions=(
+            "Answer the user's contract question only from the retrieved evidence "
+            "provided in the conversation. Cite evidence as [source_file, chunk N]. "
+            "If ok=false, report the supplied error_code and message without inventing "
+            "an answer. If row_count is zero, say that no active contract evidence "
+            "was found. Keep the answer concise."
+        ),
+        model=os.getenv("MODEL_ENDPOINT", "databricks-llama-4-maverick"),
+        model_settings=ModelSettings(temperature=0),
     )
 
 
@@ -85,7 +102,37 @@ def _response(text):
     )
 
 
+def _latest_user_text(items):
+    for item in reversed(items):
+        if isinstance(item, dict) and item.get("role") == "user":
+            content = item.get("content", "")
+            if isinstance(content, str):
+                return content
+    return ""
+
+
+def _search_parameters(question):
+    vendor_match = re.search(r"\bVEND[-_]?\d+\b", question, re.IGNORECASE)
+    vendor_id = vendor_match.group(0).upper().replace("_", "-") if vendor_match else None
+    return question, vendor_id
+
+
 @invoke()
 async def invoke_handler(request: ResponsesAgentRequest) -> ResponsesAgentResponse:
-    result = await Runner.run(create_agent(), _prepare_runner_input(request.input))
+    prepared_input = _prepare_runner_input(request.input)
+    question = _latest_user_text(prepared_input)
+    search_text, vendor_id = _search_parameters(question)
+    search_result = await asyncio.to_thread(
+        _search_vendor_contracts,
+        search_text,
+        vendor_id=vendor_id,
+    )
+    answer_input = [
+        {
+            "role": "system",
+            "content": f"Retrieved contract evidence JSON:\n{search_result}",
+        },
+        {"role": "user", "content": question},
+    ]
+    result = await Runner.run(create_answer_agent(), answer_input)
     return _response(result.final_output or "I could not produce an answer.")

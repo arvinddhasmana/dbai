@@ -17,7 +17,7 @@ resources:
     supply_chain_contract_agent:
       name: dbai-supply-agent-${bundle.target}
       description: Vector-search-only GlobalMart contract agent.
-      source_code_path: .
+      source_code_path: ..
       config:
         command: ["uv", "run", "start-server"]
         env:

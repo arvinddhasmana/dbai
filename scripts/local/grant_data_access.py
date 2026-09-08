@@ -144,9 +144,11 @@ def grant_data_access(
         return
 
     app_principal = None
+    app_service_principal_name = None
     if app_name:
         app = client.apps.get(app_name)
         app_principal = app.service_principal_client_id
+        app_service_principal_name = app.service_principal_name
         if not app_principal:
             raise SystemExit(f"App has no service principal client ID: {app_name}")
 
@@ -173,10 +175,10 @@ def grant_data_access(
             )
         else:
             access_control_list = []
-            if app_principal:
+            if app_service_principal_name:
                 access_control_list.append(
                     VectorSearchEndpointAccessControlRequest(
-                        service_principal_name=app_principal,
+                        service_principal_name=app_service_principal_name,
                         permission_level=VectorSearchEndpointPermissionLevel.CAN_USE,
                     )
                 )

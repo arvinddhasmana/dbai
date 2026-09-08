@@ -1,6 +1,7 @@
 """Vector-search tool used by the GlobalMart contract agent."""
 
 import json
+import logging
 import os
 import time
 
@@ -8,6 +9,8 @@ from agents import function_tool
 
 from agent_server.utils import get_user_workspace_client
 
+
+logger = logging.getLogger(__name__)
 
 CATALOG = os.getenv("DBAI_CATALOG", "globalmart")
 CONTRACT_SEARCH_FUNCTION = f"{CATALOG}.supply_chain.search_vendor_contracts"
@@ -112,6 +115,14 @@ def _search_vendor_contracts(search_text, vendor_id=None, support_tier=None, reg
         else:
             error_code = "CONTRACT_SEARCH_UNAVAILABLE"
             retryable = True
+        logger.exception(
+            "Contract search failed: error_code=%s catalog=%s function=%s "
+            "warehouse_configured=%s",
+            error_code,
+            CATALOG,
+            CONTRACT_SEARCH_FUNCTION,
+            bool(os.getenv("DATABRICKS_SQL_WAREHOUSE_ID")),
+        )
         return json.dumps({
             "ok": False,
             "tool": "search_vendor_contracts",
