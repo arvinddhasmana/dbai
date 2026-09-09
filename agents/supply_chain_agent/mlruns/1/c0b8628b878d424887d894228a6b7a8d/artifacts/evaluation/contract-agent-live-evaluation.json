@@ -1,0 +1,312 @@
+{
+  "dataset": "evaluation/baseline.jsonl",
+  "mode": "live",
+  "created_at": "2026-09-09T04:57:16.232677+00:00",
+  "total_cases": 10,
+  "passed_cases": 10,
+  "results": [
+    {
+      "case_id": "vend789-delay",
+      "passed": true,
+      "metrics": {
+        "ok_match": true,
+        "row_count": 4,
+        "empty_match": true,
+        "vendor_match": true,
+        "source_match": true,
+        "chunk_match": true,
+        "keywords_match": true,
+        "retrieval_precision": 1.0,
+        "retrieval_recall": 1.0,
+        "retrieval_f1": 1.0,
+        "first_relevant_rank": 1,
+        "required_fact_coverage": 1.0,
+        "irrelevant_context_rate": 0.0
+      },
+      "failure": null
+    },
+    {
+      "case_id": "vend456-delay",
+      "passed": true,
+      "metrics": {
+        "ok_match": true,
+        "row_count": 3,
+        "empty_match": true,
+        "vendor_match": true,
+        "source_match": true,
+        "chunk_match": true,
+        "keywords_match": true,
+        "retrieval_precision": 1.0,
+        "retrieval_recall": 1.0,
+        "retrieval_f1": 1.0,
+        "first_relevant_rank": 1,
+        "required_fact_coverage": 1.0,
+        "irrelevant_context_rate": 0.0
+      },
+      "failure": null
+    },
+    {
+      "case_id": "vend123-weather",
+      "passed": true,
+      "metrics": {
+        "ok_match": true,
+        "row_count": 4,
+        "empty_match": true,
+        "vendor_match": true,
+        "source_match": true,
+        "chunk_match": true,
+        "keywords_match": true,
+        "retrieval_precision": 1.0,
+        "retrieval_recall": 1.0,
+        "retrieval_f1": 1.0,
+        "first_relevant_rank": 1,
+        "required_fact_coverage": 1.0,
+        "irrelevant_context_rate": 0.0
+      },
+      "failure": null
+    },
+    {
+      "case_id": "unknown-vendor",
+      "passed": true,
+      "metrics": {
+        "ok_match": true,
+        "row_count": 0,
+        "empty_match": true,
+        "vendor_match": true,
+        "source_match": true,
+        "chunk_match": true,
+        "keywords_match": true,
+        "retrieval_precision": 0.0,
+        "retrieval_recall": 1.0,
+        "retrieval_f1": 0.0,
+        "first_relevant_rank": null,
+        "required_fact_coverage": 1.0,
+        "irrelevant_context_rate": 0.0
+      },
+      "failure": null
+    },
+    {
+      "case_id": "vend123-payment",
+      "passed": true,
+      "metrics": {
+        "ok_match": true,
+        "row_count": 3,
+        "empty_match": true,
+        "vendor_match": true,
+        "source_match": true,
+        "chunk_match": true,
+        "keywords_match": true,
+        "retrieval_precision": 1.0,
+        "retrieval_recall": 1.0,
+        "retrieval_f1": 1.0,
+        "first_relevant_rank": 1,
+        "required_fact_coverage": 1.0,
+        "irrelevant_context_rate": 0.0
+      },
+      "failure": null
+    },
+    {
+      "case_id": "vend123-delivery",
+      "passed": true,
+      "metrics": {
+        "ok_match": true,
+        "row_count": 4,
+        "empty_match": true,
+        "vendor_match": true,
+        "source_match": true,
+        "chunk_match": true,
+        "keywords_match": true,
+        "retrieval_precision": 1.0,
+        "retrieval_recall": 1.0,
+        "retrieval_f1": 1.0,
+        "first_relevant_rank": 1,
+        "required_fact_coverage": 1.0,
+        "irrelevant_context_rate": 0.0
+      },
+      "failure": null
+    },
+    {
+      "case_id": "vend456-payment",
+      "passed": true,
+      "metrics": {
+        "ok_match": true,
+        "row_count": 3,
+        "empty_match": true,
+        "vendor_match": true,
+        "source_match": true,
+        "chunk_match": true,
+        "keywords_match": true,
+        "retrieval_precision": 1.0,
+        "retrieval_recall": 1.0,
+        "retrieval_f1": 1.0,
+        "first_relevant_rank": 1,
+        "required_fact_coverage": 1.0,
+        "irrelevant_context_rate": 0.0
+      },
+      "failure": null
+    },
+    {
+      "case_id": "vend456-delivery",
+      "passed": true,
+      "metrics": {
+        "ok_match": true,
+        "row_count": 4,
+        "empty_match": true,
+        "vendor_match": true,
+        "source_match": true,
+        "chunk_match": true,
+        "keywords_match": true,
+        "retrieval_precision": 1.0,
+        "retrieval_recall": 1.0,
+        "retrieval_f1": 1.0,
+        "first_relevant_rank": 1,
+        "required_fact_coverage": 1.0,
+        "irrelevant_context_rate": 0.0
+      },
+      "failure": null
+    },
+    {
+      "case_id": "vend789-service-level",
+      "passed": true,
+      "metrics": {
+        "ok_match": true,
+        "row_count": 3,
+        "empty_match": true,
+        "vendor_match": true,
+        "source_match": true,
+        "chunk_match": true,
+        "keywords_match": true,
+        "retrieval_precision": 1.0,
+        "retrieval_recall": 1.0,
+        "retrieval_f1": 1.0,
+        "first_relevant_rank": 1,
+        "required_fact_coverage": 1.0,
+        "irrelevant_context_rate": 0.0
+      },
+      "failure": null
+    },
+    {
+      "case_id": "vend789-delivery",
+      "passed": true,
+      "metrics": {
+        "ok_match": true,
+        "row_count": 4,
+        "empty_match": true,
+        "vendor_match": true,
+        "source_match": true,
+        "chunk_match": true,
+        "keywords_match": true,
+        "retrieval_precision": 1.0,
+        "retrieval_recall": 1.0,
+        "retrieval_f1": 1.0,
+        "first_relevant_rank": 1,
+        "required_fact_coverage": 1.0,
+        "irrelevant_context_rate": 0.0
+      },
+      "failure": null
+    }
+  ],
+  "pass_rate": 1.0,
+  "judge_results": {
+    "vend789-delay": {
+      "context_precision": 1.0,
+      "context_recall": 1.0,
+      "groundedness": 1.0,
+      "completeness": 1.0,
+      "citation_correctness": 1.0,
+      "unsupported_claims": 0,
+      "rationale": "The answer is directly supported by Section 4.1 of the contract, which states that a 5% penalty per day will be deducted from the total shipment invoice value for any delivery exceeding 4 business days from order placement.",
+      "confidence": 1.0
+    },
+    "vend456-delay": {
+      "context_precision": 1.0,
+      "context_recall": 1.0,
+      "groundedness": 1.0,
+      "completeness": 1.0,
+      "citation_correctness": 1.0,
+      "unsupported_claims": 0,
+      "rationale": "The answer is directly supported by the contract text in SECTION 4: FINANCIAL LIABILITY & LATE PENALTIES.",
+      "confidence": 1.0
+    },
+    "vend123-weather": {
+      "context_precision": 1.0,
+      "context_recall": 1.0,
+      "groundedness": 1.0,
+      "completeness": 1.0,
+      "citation_correctness": 1.0,
+      "unsupported_claims": 0,
+      "rationale": "The answer is directly supported by Section 4.2 of the contract, which explicitly states that Bronze Tier agreements do not include weather exemptions.",
+      "confidence": 1.0
+    },
+    "unknown-vendor": {
+      "context_precision": 0.0,
+      "context_recall": 0.0,
+      "groundedness": 0.0,
+      "completeness": 0.0,
+      "citation_correctness": 0.0,
+      "unsupported_claims": 1,
+      "rationale": "The answer claims that no active contract evidence was found, but it does not provide any evidence or context to support this claim.",
+      "confidence": 0.0
+    },
+    "vend123-payment": {
+      "context_precision": 0.5,
+      "context_recall": 0.5,
+      "groundedness": 0.5,
+      "completeness": 0.5,
+      "citation_correctness": 0.5,
+      "unsupported_claims": 1,
+      "rationale": "The answer partially addresses the question by mentioning that the contract evidence does not explicitly state the payment terms. However, it also mentions that GlobalMart may deduct certain fees from amounts payable to the supplier, which is a relevant payment term. The answer could be improved by providing more specific information about the payment terms.",
+      "confidence": 0.5
+    },
+    "vend123-delivery": {
+      "context_precision": 1.0,
+      "context_recall": 1.0,
+      "groundedness": 1.0,
+      "completeness": 1.0,
+      "citation_correctness": 1.0,
+      "unsupported_claims": 0,
+      "rationale": "The answer is directly supported by the contract text, specifically Section 1 of the contract, which outlines the Bronze Tier service requirements.",
+      "confidence": 1.0
+    },
+    "vend456-payment": {
+      "context_precision": 0.0,
+      "context_recall": 0.0,
+      "groundedness": 0.0,
+      "completeness": 0.0,
+      "citation_correctness": 0.0,
+      "unsupported_claims": 1,
+      "rationale": "The answer does not provide specific payment terms, but mentions that GlobalMart may offset undisputed delay fees against an invoice.",
+      "confidence": 0.0
+    },
+    "vend456-delivery": {
+      "context_precision": 1.0,
+      "context_recall": 1.0,
+      "groundedness": 1.0,
+      "completeness": 1.0,
+      "citation_correctness": 1.0,
+      "unsupported_claims": 0,
+      "rationale": "The answer is directly supported by the contract text, specifically Section 3: ORDERS AND SERVICE LEVELS in Contract_VEND456_Silver.txt, chunk 1.",
+      "confidence": 1.0
+    },
+    "vend789-service-level": {
+      "context_precision": 1.0,
+      "context_recall": 1.0,
+      "groundedness": 1.0,
+      "completeness": 1.0,
+      "citation_correctness": 1.0,
+      "unsupported_claims": 0,
+      "rationale": "The answer is directly stated in the contract as 'Gold Tier performance requires an on-time delivery rate of at least 96 percent each calendar month'.",
+      "confidence": 1.0
+    },
+    "vend789-delivery": {
+      "context_precision": 1.0,
+      "context_recall": 1.0,
+      "groundedness": 1.0,
+      "completeness": 1.0,
+      "citation_correctness": 1.0,
+      "unsupported_claims": 0,
+      "rationale": "The answer is directly supported by Section 3 of the contract, which states that Gold Tier performance requires an on-time delivery rate of at least 96 percent each calendar month.",
+      "confidence": 1.0
+    }
+  }
+}

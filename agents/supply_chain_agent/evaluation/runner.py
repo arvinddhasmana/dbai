@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -18,7 +17,10 @@ class EvaluationCase:
     expected_vendor_id: str | None = None
     expected_source_file: str | None = None
     expected_chunk_indices: tuple[int, ...] = ()
+    expected_chunk_ids: tuple[str, ...] = ()
     expected_keywords: tuple[str, ...] = ()
+    required_facts: tuple[str, ...] = ()
+    reference_answer: str | None = None
     expect_empty: bool = False
     expected_error_code: str | None = None
 
@@ -65,7 +67,10 @@ def load_dataset(path: str | Path) -> list[EvaluationCase]:
                     expected_vendor_id=raw.get("expected_vendor_id"),
                     expected_source_file=raw.get("expected_source_file"),
                     expected_chunk_indices=tuple(raw.get("expected_chunk_indices", [])),
+                    expected_chunk_ids=tuple(raw.get("expected_chunk_ids", [])),
                     expected_keywords=tuple(raw.get("expected_keywords", [])),
+                    required_facts=tuple(raw.get("required_facts", [])),
+                    reference_answer=raw.get("reference_answer"),
                     expect_empty=raw.get("expect_empty", False),
                     expected_error_code=raw.get("expected_error_code"),
                 )
@@ -108,11 +113,68 @@ def score_case(case: EvaluationCase, raw_result: str | dict[str, Any]) -> CaseRe
     )
     metrics["chunk_match"] = set(case.expected_chunk_indices).issubset(chunk_indices)
     metrics["keywords_match"] = all(keyword.lower() in evidence_text for keyword in case.expected_keywords)
-    passed = all(
-        value for key, value in metrics.items() if key != "row_count"
-    )
+    retrieval = retrieval_metrics(case, rows)
+    metrics.update(retrieval)
+    required_checks = [
+        metrics["ok_match"],
+        metrics["empty_match"],
+        metrics["vendor_match"],
+        metrics["source_match"],
+        metrics["chunk_match"],
+        metrics["keywords_match"],
+    ]
+    if case.expected_chunk_ids:
+        required_checks.append(
+            set(case.expected_chunk_ids).issubset(
+                {row.get("chunk_id") for row in rows}
+            )
+        )
+    if case.required_facts:
+        required_checks.append(retrieval["required_fact_coverage"] == 1.0)
+    passed = all(required_checks)
     failure = None if passed else "Retrieved evidence did not satisfy the case expectations."
     return CaseResult(case.case_id, passed, metrics, failure)
+
+
+def retrieval_metrics(case: EvaluationCase, rows: list[dict[str, Any]]) -> dict[str, Any]:
+    """Calculate deterministic retrieval metrics from ranked search rows."""
+    expected_ids = set(case.expected_chunk_ids)
+    expected_indices = set(case.expected_chunk_indices)
+
+    def is_relevant(row: dict[str, Any]) -> bool:
+        if expected_ids:
+            return row.get("chunk_id") in expected_ids
+        if expected_indices:
+            return (
+                row.get("source_file") == case.expected_source_file
+                and row.get("chunk_index") in expected_indices
+            )
+        if case.expected_source_file:
+            return row.get("source_file") == case.expected_source_file
+        if case.expected_vendor_id:
+            return row.get("vendor_id") == case.expected_vendor_id
+        return False
+
+    relevant_flags = [is_relevant(row) for row in rows]
+    relevant_count = sum(relevant_flags)
+    expected_count = len(expected_ids or expected_indices or ({case.expected_source_file} if case.expected_source_file else set()))
+    precision = relevant_count / len(rows) if rows else 0.0
+    recall = min(relevant_count / expected_count, 1.0) if expected_count else 1.0
+    f1 = (2 * precision * recall / (precision + recall)) if precision + recall else 0.0
+    first_rank = next((index + 1 for index, relevant in enumerate(relevant_flags) if relevant), None)
+    fact_text = " ".join(str(row.get("chunk_text", "")).lower() for row in rows)
+    fact_coverage = (
+        sum(fact.lower() in fact_text for fact in case.required_facts) / len(case.required_facts)
+        if case.required_facts else 1.0
+    )
+    return {
+        "retrieval_precision": precision,
+        "retrieval_recall": recall,
+        "retrieval_f1": f1,
+        "first_relevant_rank": first_rank,
+        "required_fact_coverage": fact_coverage,
+        "irrelevant_context_rate": 1.0 - precision if rows else 0.0,
+    }
 
 
 def run_evaluation(
@@ -136,24 +198,33 @@ def run_evaluation(
 
 
 def _mock_search(question: str, vendor_id: str | None):
-    del question
     fixtures = {
-        "VEND-789": (
-            "Contract_VEND789_Gold.txt",
-            "A 5% penalty per day applies after 4 business days.",
-        ),
-        "VEND-456": (
-            "Contract_VEND456_Silver.txt",
-            "A fixed fee of $500 per container per day will apply.",
-        ),
-        "VEND-123": (
-            "Contract_VEND123_Bronze.txt",
-            "Bronze Tier agreements do not include weather exemptions.",
-        ),
+        "VEND-789": {
+            "delay": "A 5% penalty per day applies after 4 business days.",
+            "payment": "Payment obligations and invoices remain due under the agreement.",
+            "delivery": "Gold Tier requires on-time delivery and electronic proof of delivery.",
+            "on-time": "Gold Tier performance requires an on-time delivery rate of at least 96 percent each calendar month.",
+        },
+        "VEND-456": {
+            "delay": "A fixed fee of $500 per container per day will apply.",
+            "payment": "Payment obligations and invoices remain due under the agreement.",
+            "delivery": "Silver Tier includes delivery appointments and electronic proof of delivery.",
+        },
+        "VEND-123": {
+            "weather": "Bronze Tier agreements do not include weather exemptions.",
+            "payment": "Payment obligations and invoices remain due under the agreement.",
+            "delivery": "Bronze Tier requires on-time delivery and electronic proof of delivery.",
+        },
     }
-    source_file, chunk_text = fixtures.get(vendor_id, (None, None))
-    if source_file is None:
+    vendor_fixtures = fixtures.get(vendor_id)
+    if vendor_fixtures is None:
         return {"ok": True, "tool": "search_vendor_contracts", "row_count": 0, "rows": []}
+    question_text = question.lower()
+    topic = "on-time" if "on-time" in question_text and "on-time" in vendor_fixtures else next(
+        (key for key in sorted(vendor_fixtures, key=len, reverse=True) if key in question_text),
+        next(iter(vendor_fixtures)),
+    )
+    source_file = f"Contract_{vendor_id.replace('-', '')}_{'Gold' if vendor_id == 'VEND-789' else 'Silver' if vendor_id == 'VEND-456' else 'Bronze'}.txt"
     return {
         "ok": True,
         "tool": "search_vendor_contracts",
@@ -162,7 +233,7 @@ def _mock_search(question: str, vendor_id: str | None):
             "source_file": source_file,
             "chunk_index": 0,
             "vendor_id": vendor_id,
-            "chunk_text": chunk_text,
+            "chunk_text": vendor_fixtures[topic],
         }],
     }
 
@@ -187,13 +258,9 @@ def main():
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(report.as_dict(), indent=2) + "\n")
     if args.log_mlflow:
-        import mlflow
+        from evaluation.mlflow_logging import log_evaluation_report
 
-        with mlflow.start_run(run_name=f"contract-agent-eval-{args.mode}"):
-            mlflow.log_metric("eval.pass_rate", report.pass_rate)
-            mlflow.log_metric("eval.total_cases", report.total_cases)
-            mlflow.log_metric("eval.passed_cases", report.passed_cases)
-            mlflow.log_dict(report.as_dict(), "evaluation_report.json")
+        log_evaluation_report(report, report_path=args.output)
     print(json.dumps({"pass_rate": report.pass_rate, "output": str(args.output)}))
     return 0 if report.pass_rate == 1.0 else 1
 

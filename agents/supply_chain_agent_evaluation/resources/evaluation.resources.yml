@@ -1,0 +1,42 @@
+variables:
+  evaluation_dataset:
+    description: Evaluation JSONL path within the evaluation bundle.
+    default: evaluation/baseline.jsonl
+  app_url:
+    description: Already-deployed Agent App URL to evaluate.
+    default: https://dbai-supply-agent-dev-7405617519191024.4.azure.databricksapps.com
+  judge_model:
+    description: Separate, lower-cost model endpoint used only by the evaluator.
+    default: databricks-meta-llama-3-1-8b-instruct
+  mlflow_experiment_name:
+    description: MLflow experiment used for evaluation runs.
+    default: /Shared/globalmart-supply-chain-agent-uc-v2-dev
+  mlflow_tracing_sql_warehouse_id:
+    description: Existing SQL warehouse used by MLflow to persist trace assessments.
+    default: a749a7ee30b8f4f4
+
+resources:
+  jobs:
+    contract_agent_evaluation:
+      name: dbai-supply-agent-${bundle.target}-evaluation
+      description: Manual retrieval and groundedness evaluation for the deployed contract Agent.
+      tasks:
+        - task_key: evaluate
+          notebook_task:
+            notebook_path: ../../supply_chain_agent/evaluation/job.py
+            base_parameters:
+              MODE: live
+              DATASET: ${var.evaluation_dataset}
+              AGENT_APP_URL: ${var.app_url}
+              JUDGE_MODEL: ${var.judge_model}
+              MLFLOW_EXPERIMENT_NAME: ${var.mlflow_experiment_name}
+              MLFLOW_TRACKING_URI: databricks
+              MLFLOW_TRACING_SQL_WAREHOUSE_ID: ${var.mlflow_tracing_sql_warehouse_id}
+          environment_key: default
+      environments:
+        - environment_key: default
+          spec:
+            environment_version: "2"
+            dependencies:
+              - databricks-openai>=0.13.0
+              - mlflow>=3.10.0

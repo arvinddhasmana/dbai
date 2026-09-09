@@ -2,3 +2,9 @@
 {"id":"vend456-delay","question":"What is the late shipment fee for VEND-456?","expected_vendor_id":"VEND-456","expected_source_file":"Contract_VEND456_Silver.txt","expected_keywords":["$500","per container"]}
 {"id":"vend123-weather","question":"Does VEND-123 have a weather exemption?","expected_vendor_id":"VEND-123","expected_source_file":"Contract_VEND123_Bronze.txt","expected_keywords":["weather exemptions"]}
 {"id":"unknown-vendor","question":"What are the contract terms for VEND-999?","expected_vendor_id":"VEND-999","expect_empty":true}
+{"id":"vend123-payment","question":"What are the payment terms for VEND-123?","expected_vendor_id":"VEND-123","expected_source_file":"Contract_VEND123_Bronze.txt","expected_keywords":["payment"]}
+{"id":"vend123-delivery","question":"What delivery commitment applies to VEND-123?","expected_vendor_id":"VEND-123","expected_source_file":"Contract_VEND123_Bronze.txt","expected_keywords":["delivery"]}
+{"id":"vend456-payment","question":"What are the payment terms for VEND-456?","expected_vendor_id":"VEND-456","expected_source_file":"Contract_VEND456_Silver.txt","expected_keywords":["payment"]}
+{"id":"vend456-delivery","question":"What delivery commitment applies to VEND-456?","expected_vendor_id":"VEND-456","expected_source_file":"Contract_VEND456_Silver.txt","expected_keywords":["delivery"]}
+{"id":"vend789-service-level","question":"What on-time delivery rate does Gold Tier require for VEND-789?","expected_vendor_id":"VEND-789","expected_source_file":"Contract_VEND789_Gold.txt","expected_keywords":["96 percent"]}
+{"id":"vend789-delivery","question":"What delivery commitment applies to VEND-789?","expected_vendor_id":"VEND-789","expected_source_file":"Contract_VEND789_Gold.txt","expected_keywords":["delivery"]}

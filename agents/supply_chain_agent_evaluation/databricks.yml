@@ -1,0 +1,19 @@
+bundle:
+  name: dbai-supply-chain-contract-evaluation
+  engine: direct
+
+include:
+  - resources/*.yml
+
+sync:
+  paths:
+    - ../supply_chain_agent/evaluation
+
+targets:
+  dev:
+    mode: development
+    default: true
+  test:
+    mode: production
+  prod:
+    mode: production
