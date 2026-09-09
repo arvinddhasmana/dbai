@@ -18,7 +18,7 @@ steps can be safely repeated for the selected environment.
 
 Run these commands from the repository root:
 
-```bash
+```
 cd /home/arvind/workspace/dbai
 
 python3 -m venv .venv
@@ -44,7 +44,7 @@ Replace only the values in angle brackets. These values identify the Azure
 subscription, GitHub repository, and Databricks account. They normally remain
 the same when a workspace is recreated.
 
-```bash
+```
 export REPO="arvinddhasmana/dbai"
 export ENVIRONMENT="dev"
 
@@ -82,7 +82,7 @@ after recreation. Do not copy them from an old deployment:
 
 ## 2. Sign In to Azure and GitHub
 
-```bash
+```
 az login --use-device-code
 az account set --subscription "$SUBSCRIPTION_ID"
 gh auth login
@@ -90,7 +90,7 @@ gh auth login
 
 Confirm the selected Azure subscription:
 
-```bash
+```
 az account show \
   --query '{subscriptionId:id,tenantId:tenantId,name:name}' \
   --output table
@@ -102,7 +102,7 @@ Run this once when setting up the repository. It creates or reuses the Entra
 application, GitHub federated credentials, Azure role assignment, and GitHub
 Environments:
 
-```bash
+```
 scripts/local/configure_github_azure.sh \
   --repo "$REPO" \
   --subscription-id "$SUBSCRIPTION_ID"
@@ -223,11 +223,235 @@ In the Databricks workspace:
 
 Then run:
 
-```bash
+```
 python3 scripts/local/validate_demo_workspace.py --require-index
 ```
 
-## 9. Configure Genie
+## 9. Configure MLflow UC Tracing
+
+The App records redacted MLflow AgentServer spans in Unity Catalog. The trace
+tables must use an explicit Azure-backed storage location; Databricks default
+storage is not supported for MLflow UC trace telemetry.
+
+The active development configuration is:
+
+| Setting | Value |
+| --- | --- |
+| Experiment | `/Shared/globalmart-supply-chain-agent-uc-v2-dev` |
+| Trace location | `globalmart.agent_observability.contract_agent_traces` |
+| SQL Warehouse | `a749a7ee30b8f4f4` in the current workspace |
+| Storage account | `dbaitrace7405617519` in `eastus2` |
+| Filesystem | `mlflow-traces` |
+| Access Connector | `dbai-mlflow-traces-connector` |
+| UC storage credential | `mlflow-trace-credential` |
+| UC external location | `mlflow-traces-globalmart` |
+
+For another environment, replace these development values with unique names
+and the target workspace's catalog and warehouse.
+
+### 9.1 Create Azure trace storage
+
+Create an ADLS Gen2 account with hierarchical namespace enabled and private
+blob access. The storage account name must be globally unique and contain only
+lowercase letters and numbers.
+
+```
+export SUBSCRIPTION_ID="<azure-subscription-id>"
+export RESOURCE_GROUP="<resource-group>"
+export LOCATION="eastus2"
+export STORAGE_ACCOUNT="<globally-unique-lowercase-name>"
+export TRACE_FILESYSTEM="mlflow-traces"
+
+az storage account create \
+  --name "$STORAGE_ACCOUNT" \
+  --resource-group "$RESOURCE_GROUP" \
+  --location "$LOCATION" \
+  --subscription "$SUBSCRIPTION_ID" \
+  --sku Standard_LRS \
+  --kind StorageV2 \
+  --hns \
+  --min-tls-version TLS1_2 \
+  --https-only true \
+  --allow-blob-public-access false
+
+az storage container create \
+  --name "$TRACE_FILESYSTEM" \
+  --account-name "$STORAGE_ACCOUNT" \
+  --auth-mode login \
+  --public-access off
+```
+
+Create a system-assigned Databricks Access Connector and grant it
+**Storage Blob Data Contributor** on the storage account:
+
+```
+export ACCESS_CONNECTOR="dbai-mlflow-traces-connector"
+
+az databricks access-connector create \
+  --name "$ACCESS_CONNECTOR" \
+  --resource-group "$RESOURCE_GROUP" \
+  --location "$LOCATION" \
+  --identity-type SystemAssigned \
+  --subscription "$SUBSCRIPTION_ID"
+
+CONNECTOR_PRINCIPAL_ID="$(az databricks access-connector show \
+  --name "$ACCESS_CONNECTOR" \
+  --resource-group "$RESOURCE_GROUP" \
+  --subscription "$SUBSCRIPTION_ID" \
+  --query identity.principalId --output tsv)"
+
+STORAGE_ID="$(az storage account show \
+  --name "$STORAGE_ACCOUNT" \
+  --resource-group "$RESOURCE_GROUP" \
+  --subscription "$SUBSCRIPTION_ID" \
+  --query id --output tsv)"
+
+az role assignment create \
+  --assignee-object-id "$CONNECTOR_PRINCIPAL_ID" \
+  --assignee-principal-type ServicePrincipal \
+  --role "Storage Blob Data Contributor" \
+  --scope "$STORAGE_ID" \
+  --subscription "$SUBSCRIPTION_ID"
+```
+
+### 9.2 Register the Unity Catalog storage location
+
+Use a metastore administrator or an identity with the required storage
+credential and external-location privileges:
+
+```
+export DATABRICKS_CONFIG_PROFILE="<workspace-profile>"
+export DATABRICKS_CATALOG="<catalog-name>"
+export TRACE_SCHEMA="agent_observability"
+export TRACE_CREDENTIAL="mlflow-trace-credential"
+export TRACE_LOCATION="mlflow-traces-globalmart"
+export TRACE_URL="abfss://${TRACE_FILESYSTEM}@${STORAGE_ACCOUNT}.dfs.core.windows.net/"
+export ACCESS_CONNECTOR_ID="$(az databricks access-connector show \
+  --name "$ACCESS_CONNECTOR" \
+  --resource-group "$RESOURCE_GROUP" \
+  --subscription "$SUBSCRIPTION_ID" \
+  --query id --output tsv)"
+
+databricks storage-credentials create --profile "$DATABRICKS_CONFIG_PROFILE" \
+  --json "{\"name\":\"$TRACE_CREDENTIAL\",\"azure_managed_identity\":{\"access_connector_id\":\"$ACCESS_CONNECTOR_ID\"},\"comment\":\"Azure-backed MLflow trace storage\"}"
+
+databricks external-locations create "$TRACE_LOCATION" "$TRACE_URL" "$TRACE_CREDENTIAL" \
+  --profile "$DATABRICKS_CONFIG_PROFILE"
+```
+
+Create the explicit-storage schema from the SQL Editor or through the SQL
+Statement Execution API using the target warehouse:
+
+```sql
+CREATE SCHEMA IF NOT EXISTS <catalog-name>.agent_observability
+MANAGED LOCATION
+'abfss://<filesystem>@<storage-account>.dfs.core.windows.net/';
+```
+
+Do not put MLflow trace tables in the application schema
+`<catalog-name>.supply_chain` when that schema uses default storage.
+
+### 9.3 Grant trace access
+
+The App service principal and the user who runs trace verification need catalog
+and schema access. The repository automation also grants `SELECT` to all
+current and future tables in the trace schema and `MODIFY` only to the writable
+OTel tables:
+
+```
+export DBAI_CATALOG="<catalog-name>"
+export DATABRICKS_SQL_WAREHOUSE_ID="<warehouse-id>"
+export DBAI_APP_USER="<databricks-user-email>"
+
+uv run python scripts/local/grant_data_access.py \
+  --app-name "dbai-supply-agent-dev" \
+  --catalog "$DBAI_CATALOG" \
+  --warehouse-id "$DATABRICKS_SQL_WAREHOUSE_ID" \
+  --user-principal "$DBAI_APP_USER"
+```
+
+The equivalent SQL for a verification user is:
+
+```sql
+GRANT USE CATALOG ON CATALOG <catalog-name>
+TO `<databricks-user-email>`;
+GRANT USE SCHEMA ON SCHEMA <catalog-name>.agent_observability
+TO `<databricks-user-email>`;
+GRANT SELECT ON ALL TABLES IN SCHEMA <catalog-name>.agent_observability
+TO `<databricks-user-email>`;
+```
+
+`GRANT SELECT ON SCHEMA` is not the schema-wide table grant. Use
+`GRANT SELECT ON ALL TABLES IN SCHEMA` as shown above.
+
+### 9.4 Configure and deploy the App
+
+The App must receive both warehouse variables. `DATABRICKS_SQL_WAREHOUSE_ID`
+is used by the retrieval code; `MLFLOW_TRACING_SQL_WAREHOUSE_ID` is required
+when MLflow searches UC trace tables.
+
+```
+export DATABRICKS_CONFIG_PROFILE="<workspace-profile>"
+export DBAI_CLI_BIN="/tmp/databricks-cli-1.15.0/databricks"
+export DBAI_CATALOG="<catalog-name>"
+export DATABRICKS_SQL_WAREHOUSE_ID="<warehouse-id>"
+export MLFLOW_EXPERIMENT_NAME="/Shared/globalmart-supply-chain-agent-uc-v2-dev"
+export MLFLOW_TRACE_CATALOG="$DBAI_CATALOG"
+export MLFLOW_TRACE_SCHEMA="agent_observability"
+export MLFLOW_TRACE_TABLE_PREFIX="contract_agent_traces"
+
+scripts/local/deploy_app.sh
+```
+
+The existing populated experiment cannot be relinked to a new UC trace
+destination. Use a new experiment, such as the `uc-v2` experiment above, and
+keep the historical default-storage experiment unchanged.
+
+### 9.5 Verify the App and traces
+
+Open the deployed App in a browser and sign in with a user who has SQL
+Warehouse and Unity Catalog permissions. Ask a question such as:
+
+```text
+What are the weather-delay rules for VEND-789?
+```
+
+An unauthenticated `curl` to the App returns HTTP `302` because Databricks
+redirects the request to sign-in before it reaches `/invocations`. Use the
+browser or an authenticated request for end-to-end testing.
+
+Then verify traces locally from the agent directory:
+
+```
+cd agents/supply_chain_agent
+export MLFLOW_TRACKING_URI=databricks
+export MLFLOW_EXPERIMENT_NAME=/Shared/globalmart-supply-chain-agent-uc-v2-dev
+export MLFLOW_TRACING_SQL_WAREHOUSE_ID="$DATABRICKS_SQL_WAREHOUSE_ID"
+
+PYTHONPATH=src uv run python -m evaluation.verify_traces \
+  --experiment "$MLFLOW_EXPERIMENT_NAME" \
+  --trace-location globalmart.agent_observability.contract_agent_traces
+```
+
+Successful output includes a positive `trace_count` and the span names
+`contract_agent.invoke` and `contract_search`. The no-time-range warning is
+non-fatal; add a time filter when querying large trace tables.
+
+In Databricks SQL Editor, select the same warehouse and inspect the trace data:
+
+```sql
+SHOW TABLES IN <catalog-name>.agent_observability;
+
+SELECT COUNT(*)
+FROM <catalog-name>.agent_observability.contract_agent_traces_otel_spans;
+
+SELECT *
+FROM <catalog-name>.agent_observability.contract_agent_traces_otel_spans
+ORDER BY timestamp_ms DESC
+LIMIT 20;
+```
+
+## 10. Configure Genie
 
 Genie is the SQL-first conversational experience for structured inventory and
 vendor analysis, with optional contract retrieval through the
@@ -274,7 +498,7 @@ available and do not answer from deleted contract history.
 
 Run the read-only checks after the index is synchronized:
 
-```bash
+```
 databricks bundle run refresh_vendor_contract_chunks -t "$BUNDLE_TARGET"
 python3 scripts/local/validate_demo_workspace.py --require-index
 ```
@@ -300,7 +524,7 @@ answers after each index synchronization, follow the
 [Contract Change Demo Runbook](05-contract-change-demo.md). The read-only
 function checks are in `sql/02_genie_smoke_tests.sql`.
 
-## 10. Use the Mosaic AI Agent App
+## 11. Use the Mosaic AI Agent App
 
 Open the deployed `supply_chain_agent` Databricks App and ask structured,
 contract, or mixed questions. The App uses an MLflow AgentServer, a Databricks
@@ -326,7 +550,7 @@ belong exclusively to this environment before deleting them.
 
 ### Check the resource groups
 
-```bash
+```
 az group show \
   --name "$RESOURCE_GROUP" \
   --subscription "$SUBSCRIPTION_ID" \
@@ -345,7 +569,7 @@ az group show \
 The repository teardown script also removes Databricks data-plane objects before
 Azure deletion. Use it when the old workspace is still reachable:
 
-```bash
+```
 scripts/local/destroy_demo_environment.sh --yes
 ```
 
@@ -358,7 +582,7 @@ If the resource group was already deleted manually, delete the deployment-owned
 managed resource group only after confirming that it belongs to this
 environment:
 
-```bash
+```
 az group delete \
   --name "$MANAGED_RESOURCE_GROUP" \
   --subscription "$SUBSCRIPTION_ID" \
@@ -368,7 +592,7 @@ az group delete \
 Wait until deletion has completed before recreating the same workspace names.
 You can check with:
 
-```bash
+```
 az group show \
   --name "$RESOURCE_GROUP" \
   --subscription "$SUBSCRIPTION_ID"
@@ -401,7 +625,7 @@ warehouse ID, App identity, and search resource IDs must be rediscovered.
 
 Check the resource group and workspace name:
 
-```bash
+```
 az databricks workspace list \
   --subscription "$SUBSCRIPTION_ID" \
   --query '[].{name:name,resourceGroup:resourceGroup,workspaceUrl:workspaceUrl}' \
@@ -417,7 +641,7 @@ profile again and rerun workload deployment.
 
 Read the values from the selected GitHub Environment:
 
-```bash
+```
 gh variable get DBAI_CATALOG --repo "$REPO" --env "$ENVIRONMENT"
 gh variable get DATABRICKS_SQL_WAREHOUSE_ID --repo "$REPO" --env "$ENVIRONMENT"
 ```
@@ -434,4 +658,3 @@ tables to the identity running the Bundle jobs.
 
 Confirm that the contract refresh completed, the source table contains rows,
 and the triggered AI Search synchronization completed successfully.
-```

@@ -10,13 +10,13 @@ variables:
     default: databricks-llama-4-maverick
   mlflow_experiment_name:
     description: MLflow experiment used for agent traces and evaluation runs.
-    default: /Shared/globalmart-supply-chain-agent-uc-dev
+    default: /Shared/globalmart-supply-chain-agent-uc-v2-dev
   mlflow_trace_catalog:
     description: Unity Catalog catalog used for MLflow trace tables.
     default: globalmart
   mlflow_trace_schema:
     description: Unity Catalog schema used for MLflow trace tables.
-    default: supply_chain
+    default: agent_observability
   mlflow_trace_table_prefix:
     description: Prefix for MLflow trace tables in the trace schema.
     default: contract_agent_traces

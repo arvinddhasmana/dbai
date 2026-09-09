@@ -15,7 +15,7 @@ catalog_name="${DBAI_CATALOG:?Set DBAI_CATALOG to the existing Unity Catalog cat
 warehouse_id="${DATABRICKS_SQL_WAREHOUSE_ID:?Set DATABRICKS_SQL_WAREHOUSE_ID to the existing SQL Warehouse ID.}"
 app_name="${DBAI_APP_NAME:-dbai-supply-agent-${target}}"
 app_resource_key="${DBAI_APP_RESOURCE_KEY:-supply_chain_contract_agent}"
-mlflow_experiment_name="${MLFLOW_EXPERIMENT_NAME:-/Shared/globalmart-supply-chain-agent-uc-${target}}"
+mlflow_experiment_name="${MLFLOW_EXPERIMENT_NAME:-/Shared/globalmart-supply-chain-agent-uc-v2-${target}}"
 
 if [[ "$mlflow_experiment_name" != /* ]]; then
   printf 'MLFLOW_EXPERIMENT_NAME must be a workspace-absolute path such as /Shared/globalmart-supply-chain-agent-%s\n' "$target" >&2
@@ -95,7 +95,7 @@ bundle_vars=(
   "--var=model_endpoint=${MODEL_ENDPOINT:-databricks-llama-4-maverick}"
   "--var=mlflow_experiment_name=${mlflow_experiment_name}"
   "--var=mlflow_trace_catalog=${MLFLOW_TRACE_CATALOG:-${catalog_name}}"
-  "--var=mlflow_trace_schema=${MLFLOW_TRACE_SCHEMA:-supply_chain}"
+  "--var=mlflow_trace_schema=${MLFLOW_TRACE_SCHEMA:-agent_observability}"
   "--var=mlflow_trace_table_prefix=${MLFLOW_TRACE_TABLE_PREFIX:-contract_agent_traces}"
 )
 

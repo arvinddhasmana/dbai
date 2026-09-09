@@ -35,7 +35,7 @@ The baseline deployment must already provide all of the following:
 The Databricks CLI, Python SDK, and a serverless SQL warehouse must be
 available. Set the profile and warehouse ID:
 
-```bash
+```
 export DATABRICKS_CONFIG_PROFILE=aiarchitect
 export DATABRICKS_SQL_WAREHOUSE_ID=<serverless-sql-warehouse-id>
 ```
@@ -50,7 +50,7 @@ Verify that the deployed baseline is healthy before changing any files. The
 checks below are read-only. If a previous demo run left the environment in a
 changed state, optionally restore the baseline first:
 
-```bash
+```
 /opt/az/bin/python3 scripts/local/run_contract_change_demo.py reset
 ```
 
@@ -58,13 +58,13 @@ Reset uploads the three baseline files, removes the demo-only new vendor file,
 restores the original Silver contract, and runs a `full_rebuild`. Trigger a
 Search sync after reset before running the Search checks in Step 5.
 
-```bash
+```
 /opt/az/bin/python3 scripts/local/run_contract_change_demo.py reset
 ```
 
 Show the three baseline files locally, then show the current Gold state in Databricks SQL:
 
-```bash
+```
 find sample_data/vendor_contracts -maxdepth 1 -type f -printf '%f\n' | sort
 ```
 
@@ -103,13 +103,13 @@ the lifecycle steps.
 
 First inspect the file that will be added:
 
-```bash
+```
 sed -n '1,24p' sample_data/vendor_contracts/demo/add/Contract_VEND321_Platinum.txt
 ```
 
 Run the add action:
 
-```bash
+```
 /opt/az/bin/python3 scripts/local/run_contract_change_demo.py add
 ```
 
@@ -173,13 +173,13 @@ What to call out: the event is `NEW`; the document is `ACTIVE`; the parser infer
 
 Inspect the amended local contract and the changed commercial terms:
 
-```bash
+```
 grep -n -E 'UPDATED|97 percent|\$750|\$2,000' sample_data/vendor_contracts/demo/update/Contract_VEND456_Silver.txt
 ```
 
 Run the update action:
 
-```bash
+```
 /opt/az/bin/python3 scripts/local/run_contract_change_demo.py update
 ```
 
@@ -230,7 +230,7 @@ What to call out: the second event is `UPDATED`, the content hash changed, the f
 
 The Bronze contract is deliberately deleted from the Volume while its local baseline file remains available for reset.
 
-```bash
+```
 /opt/az/bin/python3 scripts/local/run_contract_change_demo.py delete
 ```
 
@@ -413,19 +413,19 @@ Expected result after index synchronization: `deleted_contract_results = 0`.
 
 To return to a clean baseline and run it again:
 
-```bash
+```
 /opt/az/bin/python3 scripts/local/run_contract_change_demo.py reset
 ```
 
 Use `--no-run` when you want to inspect the Volume mutation before starting the refresh job. For example:
 
-```bash
+```
 /opt/az/bin/python3 scripts/local/run_contract_change_demo.py add --no-run
 ```
 
 Run the normal incremental job manually only when using `--no-run`:
 
-```bash
+```
 databricks bundle run refresh_vendor_contract_chunks -t dev
 ```
 
@@ -438,13 +438,13 @@ Volume, the Genie function, all Bronze/Silver/Gold demo tables, the custom App,
 and the bundle-managed jobs. It uses Databricks workspace APIs and does not
 require a SQL warehouse. Preview the object list without contacting Databricks:
 
-```bash
+```
 /opt/az/bin/python3 scripts/local/destroy_demo_environment.py --dry-run
 ```
 
 Run the deletion only after reviewing the list:
 
-```bash
+```
 /opt/az/bin/python3 scripts/local/destroy_demo_environment.py --yes
 ```
 

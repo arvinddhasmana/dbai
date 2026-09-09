@@ -17,6 +17,7 @@ IDENTIFIER_PATTERN = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 TABLES = (
     "vendor_contract_chunks_index_rebuilt",
 )
+TRACE_SCHEMA = "agent_observability"
 BOOTSTRAP_TABLES = (
     "dim_products",
     "dim_vendors",
@@ -26,7 +27,7 @@ BOOTSTRAP_TABLES = (
     "contract_documents_silver",
     "vendor_contract_chunks_index_source",
 )
-TRACE_TABLES = (
+TRACE_MODIFY_TABLES = (
     "contract_agent_traces_otel_annotations",
     "contract_agent_traces_otel_logs",
     "contract_agent_traces_otel_metrics",
@@ -114,10 +115,18 @@ def grant_bootstrap_modify(client, catalog, principals, warehouse_id):
 
 def grant_sql_access(client, catalog, principal, warehouse_id):
     principal_sql = sql_principal(principal)
+    trace_rows = query_rows(
+        client,
+        f"SELECT table_name FROM {catalog}.information_schema.tables "
+        f"WHERE table_schema = '{TRACE_SCHEMA}'",
+        warehouse_id,
+    )
+    existing_trace_tables = {row[0] for row in trace_rows}
     statements = [
         f"GRANT USE CATALOG ON CATALOG {catalog} TO {principal_sql}",
         f"GRANT USE SCHEMA ON SCHEMA {catalog}.`supply_chain` TO {principal_sql}",
         f"GRANT CREATE TABLE ON SCHEMA {catalog}.`supply_chain` TO {principal_sql}",
+        f"GRANT USE SCHEMA ON SCHEMA {catalog}.`{TRACE_SCHEMA}` TO {principal_sql}",
     ]
     statements.extend(
         f"GRANT SELECT ON TABLE {catalog}.`supply_chain`.`{table}` TO {principal_sql}"
@@ -127,10 +136,15 @@ def grant_sql_access(client, catalog, principal, warehouse_id):
         f"GRANT EXECUTE ON FUNCTION {catalog}.`supply_chain`.`search_vendor_contracts` "
         f"TO {principal_sql}"
     )
-    statements.extend(
-        f"GRANT SELECT, MODIFY ON TABLE {catalog}.`supply_chain`.`{table}` "
+    statements.append(
+        f"GRANT SELECT ON ALL TABLES IN SCHEMA {catalog}.`{TRACE_SCHEMA}` "
         f"TO {principal_sql}"
-        for table in TRACE_TABLES
+    )
+    statements.extend(
+        f"GRANT MODIFY ON TABLE {catalog}.`{TRACE_SCHEMA}`.`{table}` "
+        f"TO {principal_sql}"
+        for table in TRACE_MODIFY_TABLES
+        if table in existing_trace_tables
     )
     for statement in statements:
         execute_sql(client, statement, warehouse_id)

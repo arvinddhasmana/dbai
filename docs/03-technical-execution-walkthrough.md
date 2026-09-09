@@ -181,7 +181,7 @@ The result is a regular Delta table. Change Data Feed is enabled so downstream s
 
 Run the compatibility gate before creating the managed index:
 
-```bash
+```
 /opt/az/bin/python3 scripts/local/validate_demo_workspace.py
 ```
 
@@ -245,7 +245,7 @@ Primary key: chunk_id
 Run the script with the authenticated CLI profile. The script obtains a
 short-lived token only when constructing the AI Search client:
 
-```bash
+```
 export DATABRICKS_CONFIG_PROFILE=aiarchitect
 export AI_SEARCH_ENDPOINT=globalmart-supply-chain-search
 /opt/az/bin/python3 scripts/local/create_vendor_contract_index.py

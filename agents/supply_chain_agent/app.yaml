@@ -6,11 +6,11 @@ env:
   - name: MLFLOW_REGISTRY_URI
     value: "databricks-uc"
   - name: MLFLOW_EXPERIMENT_NAME
-    value: "/Shared/globalmart-supply-chain-agent-uc-dev"
+    value: "/Shared/globalmart-supply-chain-agent-uc-v2-dev"
   - name: MLFLOW_TRACE_CATALOG
     value: "globalmart"
   - name: MLFLOW_TRACE_SCHEMA
-    value: "supply_chain"
+    value: "agent_observability"
   - name: MLFLOW_TRACE_TABLE_PREFIX
     value: "contract_agent_traces"
   - name: DATABRICKS_SQL_WAREHOUSE_ID

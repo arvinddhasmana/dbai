@@ -73,16 +73,16 @@ shared platform resources:
 ```mermaid
 flowchart LR
     User[Operations or procurement user]
-    Genie[Genie Agent\nManaged Genie space]
-    App[Databricks App\nUI and MLflow AgentServer]
-    Custom[Custom Agent\nAgent Framework orchestration]
+    Genie["Genie Agent<br/>Managed Genie space"]
+    App["Databricks App<br/>UI and MLflow AgentServer"]
+    Custom["Custom Agent<br/>Agent Framework orchestration"]
     SQL[SQL Warehouse]
     Gold[(Unity Catalog Gold tables)]
     Volume[(Contract Volume)]
     Refresh[Contract refresh job]
     Source[(Regular Delta source table)]
     Search[AI Search index]
-    Function[search_vendor_contracts\nSQL table-valued function]
+    Function["search_vendor_contracts<br/>SQL table-valued function"]
     Model[Model Serving endpoint]
 
     User -->|SQL-first questions| Genie
@@ -149,28 +149,26 @@ sequenceDiagram
 ## 5. System Context, C4 Level 1
 
 ```mermaid
-C4Context
-    title GlobalMart Supply Chain Intelligence Demo - System Context
+flowchart LR
+    Operations[Operations Manager]
+    Procurement[Procurement Manager]
+    Genie[Databricks Genie Agent]
+    App[Custom Databricks Supply Chain App]
+    Databricks[Azure Databricks Premium]
+    AISearch[Databricks AI Search]
+    Volume[Unity Catalog Volume]
+    Model[Databricks Model Serving]
 
-    Person(operations, "Operations Manager", "Investigates delayed inventory and vendor performance")
-    Person(procurement, "Procurement Manager", "Reviews contract terms, penalties, and vendor obligations")
-    System(genie, "Databricks Genie Agent", "Managed SQL-first conversational analysis")
-    System(app, "Custom Databricks Supply Chain App", "Dedicated UI hosting the custom Agent Framework agent")
-    System_Ext(databricks, "Azure Databricks Premium", "Runs Delta tables, serverless jobs, model serving, and SQL")
-    System_Ext(aisearch, "Databricks AI Search", "Indexes and retrieves contract chunks")
-    System_Ext(volume, "Unity Catalog Volume", "Stores vendor contract files")
-    System_Ext(model, "Databricks Model Serving", "Agent and answer generation")
-
-    Rel(operations, genie, "Asks SQL-first inventory questions")
-    Rel(procurement, genie, "Asks governed vendor questions")
-    Rel(operations, app, "Asks structured or mixed questions")
-    Rel(procurement, app, "Asks grounded contract questions")
-    Rel(genie, databricks, "Uses semantic layer and SQL")
-    Rel(app, databricks, "Uses custom-agent tools")
-    Rel(app, aisearch, "Performs semantic retrieval")
-    Rel(app, model, "Generates grounded answers")
-    Rel(databricks, volume, "Reads source contracts")
-    Rel(aisearch, databricks, "Syncs from Delta source")
+    Operations -->|SQL-first inventory questions| Genie
+    Procurement -->|Governed vendor questions| Genie
+    Operations -->|Structured or mixed questions| App
+    Procurement -->|Grounded contract questions| App
+    Genie -->|Semantic layer and SQL| Databricks
+    App -->|Custom-agent tools| Databricks
+    App -->|Semantic retrieval| AISearch
+    App -->|Grounded answer generation| Model
+    Databricks -->|Reads source contracts| Volume
+    AISearch -->|Syncs from Delta source| Databricks
 ```
 
 Deployment compatibility is checked by
@@ -184,64 +182,53 @@ separate design because the managed index is a serving copy of the source.
 ## 6. Container Diagram, C4 Level 2
 
 ```mermaid
-C4Container
-    title GlobalMart Supply Chain Intelligence Demo - Containers
+flowchart LR
+    User[Business User]
+    App[Custom Databricks App]
+    Agent[Agent Framework]
+    Bundle[Declarative Automation Bundle]
+    DataJob[Mock Data Job]
+    RefreshJob[Contract Refresh Job]
+    Delta[Unity Catalog Delta Data Layer]
+    SQL[Databricks SQL Editor]
+    Volume[Unity Catalog Volume]
+    Index[Managed AI Search Index]
+    Model[Embedding Model Endpoint]
 
-    Person(user, "Business User", "Operations or procurement stakeholder")
-
-    System_Boundary(platform, "Azure Databricks Premium") {
-        Container(app, "Custom Databricks App", "App UI and server", "Accepts questions and renders grounded answers")
-        Container(agent, "Agent Framework", "Agent endpoint", "Routes questions to SQL and AI Search tools")
-        Container(bundle, "Declarative Automation Bundle", "databricks.yml and resources/*.yml", "Deploys serverless jobs")
-        Container(datajob, "Mock Data Job", "Serverless notebook", "Writes dim_products, dim_vendors, and fact_inventory_status")
-        Container(refreshjob, "Contract Refresh Job", "Serverless notebook", "Reads files, chunks text, and writes a regular Delta table")
-        Container(delta, "Delta Data Layer", "Unity Catalog tables", "Stores structured facts, dimensions, and searchable chunks")
-        Container(sql, "Databricks SQL Editor", "SQL", "Runs auditable Text-to-SQL queries")
-    }
-
-    System_Ext(volume, "Unity Catalog Volume", "Contract files")
-    System_Ext(index, "Managed AI Search Index", "Triggered Delta Sync index")
-    System_Ext(model, "Embedding Model Endpoint", "databricks-qwen3-embedding-0-6b")
-
-    Rel(user, app, "Asks natural-language questions")
-    Rel(app, agent, "Sends question and conversation")
-    Rel(agent, sql, "Uses read-only SQL tool")
-    Rel(agent, index, "Uses retrieval tool")
-    Rel(bundle, datajob, "Deploys and runs")
-    Rel(bundle, refreshjob, "Deploys and runs")
-    Rel(datajob, delta, "Writes structured tables")
-    Rel(volume, refreshjob, "Reads contract files")
-    Rel(refreshjob, delta, "Incrementally updates [GOLD] index source")
-    Rel(delta, sql, "Provides SQL tables")
-    Rel(delta, index, "Delta Sync source")
-    Rel(index, model, "Creates embeddings")
+    User -->|Natural-language questions| App
+    App -->|Question and conversation| Agent
+    Agent -->|Read-only SQL tool| SQL
+    Agent -->|Retrieval tool| Index
+    Bundle -->|Deploys and runs| DataJob
+    Bundle -->|Deploys and runs| RefreshJob
+    DataJob -->|Writes structured tables| Delta
+    Volume -->|Contract files| RefreshJob
+    RefreshJob -->|Incremental Gold index source| Delta
+    Delta -->|SQL tables| SQL
+    Delta -->|Delta Sync source| Index
+    Index -->|Creates embeddings| Model
 ```
 
 ## 7. Component Diagram, C4 Level 3
 
 ```mermaid
-C4Component
-    title Contract Refresh Job - Components
+flowchart LR
+    Volume[Unity Catalog Volume]
+    Reader[Binary File Reader<br/>Spark binaryFile]
+    Extractor[Text Extractor<br/>pypdf and UTF-8 decoder]
+    Tokenizer[Tokenization and Windowing<br/>tiktoken cl100k_base]
+    Metadata[Vendor Metadata Mapper<br/>Python mapping and regex]
+    Identity[Chunk ID Generator<br/>SHA-256]
+    Writer[Delta Writer<br/>Spark DataFrame and Delta MERGE]
+    Delta[vendor_contract_chunks_index_source<br/>Regular Delta table]
 
-    Container_Boundary(refresh, "refresh_vendor_contract_chunks.py") {
-        Component(reader, "Binary File Reader", "Spark binaryFile", "Loads supported files from the Volume")
-        Component(extractor, "Text Extractor", "pypdf and UTF-8 decoder", "Extracts text from PDF and text-like files")
-        Component(tokenizer, "Tokenization and Windowing", "tiktoken cl100k_base", "Creates 500-token windows with a 450-token step")
-        Component(metadata, "Vendor Metadata Mapper", "Python mapping and regex", "Derives vendor ID and business metadata from filename")
-        Component(identity, "Chunk ID Generator", "SHA-256", "Creates deterministic chunk identifiers")
-        Component(writer, "Delta Writer", "Spark DataFrame and Delta MERGE", "Incrementally updates the [GOLD] regular Delta source table")
-    }
-
-    Container_Ext(volume, "Unity Catalog Volume")
-    Container_Ext(delta, "vendor_contract_chunks_index_source", "Regular Delta table")
-
-    Rel(volume, reader, "Reads binary content")
-    Rel(reader, extractor, "Passes path and bytes")
-    Rel(extractor, tokenizer, "Passes normalized text")
-    Rel(tokenizer, metadata, "Produces chunk text")
-    Rel(metadata, identity, "Adds vendor fields")
-    Rel(identity, writer, "Produces complete rows")
-    Rel(writer, delta, "Saves rows")
+    Volume -->|Binary content| Reader
+    Reader -->|Path and bytes| Extractor
+    Extractor -->|Normalized text| Tokenizer
+    Tokenizer -->|Chunk text| Metadata
+    Metadata -->|Vendor fields| Identity
+    Identity -->|Deterministic rows| Writer
+    Writer -->|Saves rows| Delta
 ```
 
 ## 8. Data Flow
@@ -283,7 +270,7 @@ flowchart LR
 
 | Resource | Value |
 |---|---|
-| Workspace | `https://adb-7405616725207770.10.azuredatabricks.net` |
+| Workspace | `https://adb-7405617519191024.4.azuredatabricks.net` |
 | Bundle | `dbai` |
 | Target | `dev` |
 | Catalog/schema | `globalmart.supply_chain` |
@@ -293,6 +280,10 @@ flowchart LR
 | Managed index | `vendor_contract_chunks_index_rebuilt` |
 | AI Search endpoint | `globalmart-supply-chain-search` |
 | Embedding endpoint | `databricks-qwen3-embedding-0-6b` |
+| App | `dbai-supply-agent-dev` |
+| MLflow experiment | `/Shared/globalmart-supply-chain-agent-uc-v2-dev` |
+| MLflow trace location | `globalmart.agent_observability.contract_agent_traces` |
+| MLflow trace warehouse | SQL Warehouse `a749a7ee30b8f4f4` |
 | Index mode | `TRIGGERED` |
 | Window size | 500 tokens |
 | Window step | 450 tokens |

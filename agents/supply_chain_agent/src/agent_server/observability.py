@@ -23,11 +23,11 @@ def configure_mlflow():
     experiment_id = os.getenv("MLFLOW_EXPERIMENT_ID")
     experiment_name = os.getenv(
         "MLFLOW_EXPERIMENT_NAME",
-        "/Shared/globalmart-supply-chain-agent-uc-dev",
+        "/Shared/globalmart-supply-chain-agent-uc-v2-dev",
     )
     trace_location = UnityCatalog(
         catalog_name=os.getenv("MLFLOW_TRACE_CATALOG", os.getenv("DBAI_CATALOG", "globalmart")),
-        schema_name=os.getenv("MLFLOW_TRACE_SCHEMA", "supply_chain"),
+        schema_name=os.getenv("MLFLOW_TRACE_SCHEMA", "agent_observability"),
         table_prefix=os.getenv("MLFLOW_TRACE_TABLE_PREFIX", "contract_agent_traces"),
     )
     try:

@@ -41,20 +41,20 @@ The VEND-789 contract states that severe winter weather, blizzards, and freezing
 
 Workspace used by this project:
 
-`https://adb-7405616725207770.10.azuredatabricks.net`
+`https://adb-7405617519191024.4.azuredatabricks.net`
 
 ## 3. Bootstrap The Demo
 
 From the repository root:
 
-```bash
+```
 export DATABRICKS_CONFIG_PROFILE=aiarchitect
 export DATABRICKS_SQL_WAREHOUSE_ID=<serverless-sql-warehouse-id>
 ```
 
 Run the complete idempotent bootstrap:
 
-```bash
+```
 /opt/az/bin/python3 scripts/local/bootstrap_demo_environment.py
 ```
 
@@ -124,13 +124,13 @@ available and do not answer from deleted contract history.
 
 Refresh the structured business tables:
 
-```bash
+```
 databricks bundle run generate_mock_data -t dev
 ```
 
 Refresh the regular Delta contract source table:
 
-```bash
+```
 databricks bundle run refresh_vendor_contract_chunks -t dev
 ```
 
@@ -158,7 +158,7 @@ The index uses `TRIGGERED` mode. After the source refresh completes:
 
 The bootstrap script is idempotent and only creates the index if it does not already exist:
 
-```bash
+```
 export DATABRICKS_CONFIG_PROFILE=aiarchitect
 export AI_SEARCH_ENDPOINT=globalmart-supply-chain-search
 /opt/az/bin/python3 scripts/local/create_vendor_contract_index.py

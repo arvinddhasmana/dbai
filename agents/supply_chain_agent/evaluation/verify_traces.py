@@ -14,7 +14,7 @@ def main() -> int:
         "--experiment",
         default=os.getenv(
             "MLFLOW_EXPERIMENT_NAME",
-            "/Shared/globalmart-supply-chain-agent-uc-dev",
+            "/Shared/globalmart-supply-chain-agent-uc-v2-dev",
         ),
     )
     parser.add_argument(
@@ -24,7 +24,7 @@ def main() -> int:
             ".".join(
                 (
                     os.getenv("MLFLOW_TRACE_CATALOG", os.getenv("DBAI_CATALOG", "globalmart")),
-                    os.getenv("MLFLOW_TRACE_SCHEMA", "supply_chain"),
+                    os.getenv("MLFLOW_TRACE_SCHEMA", "agent_observability"),
                     os.getenv("MLFLOW_TRACE_TABLE_PREFIX", "contract_agent_traces"),
                 )
             ),
@@ -35,6 +35,12 @@ def main() -> int:
     args = parser.parse_args()
 
     mlflow.set_tracking_uri(os.getenv("MLFLOW_TRACKING_URI", "databricks"))
+    warehouse_id = os.getenv(
+        "MLFLOW_TRACING_SQL_WAREHOUSE_ID",
+        os.getenv("DATABRICKS_SQL_WAREHOUSE_ID"),
+    )
+    if warehouse_id:
+        os.environ.setdefault("MLFLOW_TRACING_SQL_WAREHOUSE_ID", warehouse_id)
     experiment = mlflow.get_experiment_by_name(args.experiment)
     if experiment is None:
         raise SystemExit(f"MLflow experiment not found: {args.experiment}")

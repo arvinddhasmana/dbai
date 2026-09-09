@@ -92,7 +92,7 @@ The root Bundle synchronizes only `scripts/deployable/**` for shared platform jo
 
 Install local development dependencies:
 
-```bash
+```
 python3 -m venv .venv
 .venv/bin/python -m pip install -r requirements-dev.txt
 ```
@@ -101,7 +101,7 @@ python3 -m venv .venv
 
 Set the target profile and SQL Warehouse ID:
 
-```bash
+```
 export DATABRICKS_CONFIG_PROFILE=<profile>
 export DATABRICKS_SQL_WAREHOUSE_ID=<warehouse-id>
 export DBAI_CATALOG=<catalog-name>
@@ -114,7 +114,7 @@ versions and uses the compatibility deployment path automatically.
 
 Validate and deploy the Bundle:
 
-```bash
+```
 databricks bundle validate -t dev
 databricks bundle deploy -t dev \
   --var="catalog=${DBAI_CATALOG}" \
@@ -123,7 +123,7 @@ databricks bundle deploy -t dev \
 
 Bootstrap the data-plane resources:
 
-```bash
+```
 scripts/local/deploy_workload.sh
 python3 scripts/local/bootstrap_demo_environment.py \
   --target dev \
@@ -139,7 +139,7 @@ Bootstrap creates or updates the structured tables, contract chunk source, AI Se
 
 The wrapper provisions an isolated Azure resource group and Databricks workspace with Bicep, then runs the Bundle and bootstrap workflow:
 
-```bash
+```
 export AZURE_SUBSCRIPTION_ID=<subscription-id>
 export DATABRICKS_CONFIG_PROFILE=dbai-demo
 scripts/local/deploy_demo_environment.sh
@@ -147,13 +147,13 @@ scripts/local/deploy_demo_environment.sh
 
 Use the local validation script before testing:
 
-```bash
+```
 python3 scripts/local/validate_demo_workspace.py --require-index
 ```
 
 To tear down the disposable environment:
 
-```bash
+```
 scripts/local/destroy_demo_environment.sh --yes --dry-run
 scripts/local/destroy_demo_environment.sh --yes
 ```
@@ -189,7 +189,7 @@ Complete the Azure and GitHub setup from an administrator terminal. The script
 uses the administrator's existing `az login` and `gh auth login` sessions; no
 credentials need to be sent to the repository or entered in chat:
 
-```bash
+```
 az login
 az account set --subscription <subscription-id>
 gh auth login
@@ -317,7 +317,7 @@ and deploys only after Bootstrap creates the data and AI Search objects.
 If an App was created before App revision deployment was added, activate it
 after Bootstrap with the same helper used by the workflow:
 
-```bash
+```
 scripts/local/deploy_app.sh
 ```
 
@@ -363,7 +363,7 @@ The browser keeps conversation history in memory. Refreshing the page starts a n
 
 The deployable jobs are registered in `resources/dbai.resources.yml`:
 
-```bash
+```
 databricks bundle run generate_mock_data -t dev
 databricks bundle run refresh_vendor_contract_chunks -t dev \
   --notebook-params INGESTION_MODE=full_rebuild
@@ -374,7 +374,7 @@ After refreshing contract chunks, trigger the configured AI Search index synchro
 
 ## Test and Validate Locally
 
-```bash
+```
 .venv/bin/python -m pytest -q
 .venv/bin/python -m compileall -q agents/supply_chain_agent/src/agent_server scripts/deployable
 bash -n scripts/local/deploy_demo_environment.sh scripts/local/destroy_demo_environment.sh
@@ -382,7 +382,7 @@ bash -n scripts/local/deploy_demo_environment.sh scripts/local/destroy_demo_envi
 
 Workspace preflight:
 
-```bash
+```
 python3 scripts/local/validate_demo_workspace.py \
   --warehouse-id "$DATABRICKS_SQL_WAREHOUSE_ID" \
   --require-index
