@@ -136,9 +136,9 @@ def grant_sql_access(client, catalog, principal, warehouse_id):
         f"GRANT EXECUTE ON FUNCTION {catalog}.`supply_chain`.`search_vendor_contracts` "
         f"TO {principal_sql}"
     )
-    statements.append(
-        f"GRANT SELECT ON ALL TABLES IN SCHEMA {catalog}.`{TRACE_SCHEMA}` "
-        f"TO {principal_sql}"
+    statements.extend(
+        f"GRANT SELECT ON TABLE {catalog}.`{TRACE_SCHEMA}`.`{table}` TO {principal_sql}"
+        for table in sorted(existing_trace_tables)
     )
     statements.extend(
         f"GRANT MODIFY ON TABLE {catalog}.`{TRACE_SCHEMA}`.`{table}` "

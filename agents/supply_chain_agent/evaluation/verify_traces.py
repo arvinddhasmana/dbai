@@ -32,6 +32,11 @@ def main() -> int:
         help="Unity Catalog trace location: catalog.schema[.table_prefix].",
     )
     parser.add_argument("--max-results", type=int, default=20)
+    parser.add_argument(
+        "--require-stream",
+        action="store_true",
+        help="Require a streamed agent span in addition to the invoke contract.",
+    )
     args = parser.parse_args()
 
     mlflow.set_tracking_uri(os.getenv("MLFLOW_TRACKING_URI", "databricks"))
@@ -60,6 +65,8 @@ def main() -> int:
         for span in trace.data.spans
     }
     required = {"contract_agent.invoke", "contract_search"}
+    if args.require_stream:
+        required.add("contract_agent.stream")
     missing = required - span_names
     if missing:
         raise SystemExit(f"Missing expected span names: {', '.join(sorted(missing))}")

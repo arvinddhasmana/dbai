@@ -8,9 +8,18 @@ variables:
   model_endpoint:
     description: Foundation model endpoint used by this agent.
     default: databricks-llama-4-maverick
+  use_ai_gateway:
+    description: Route agent model calls through Unity Gateway when enabled.
+    default: "false"
+  ai_gateway_endpoint:
+    description: Unity Gateway model service name used when Gateway routing is enabled.
+    default: agent-supply-chain-contract-ka-model
   mlflow_experiment_name:
     description: MLflow experiment used for agent traces and evaluation runs.
     default: /Shared/globalmart-supply-chain-agent-uc-v2-dev
+  mlflow_experiment_id:
+    description: Existing MLflow experiment bound to the agent for trace continuity.
+    default: "4341372968956549"
   mlflow_trace_catalog:
     description: Unity Catalog catalog used for MLflow trace tables.
     default: globalmart
@@ -27,7 +36,7 @@ variables:
 resources:
   apps:
     supply_chain_contract_agent:
-      name: dbai-supply-agent-${bundle.target}
+      name: agent-supply-chain-ctr-ka-${bundle.target}
       description: Vector-search-only GlobalMart contract agent.
       source_code_path: ..
       config:
@@ -39,6 +48,8 @@ resources:
             value: databricks-uc
           - name: MLFLOW_EXPERIMENT_NAME
             value: ${var.mlflow_experiment_name}
+          - name: MLFLOW_EXPERIMENT_ID
+            value_from: mlflow-experiment
           - name: MLFLOW_TRACE_CATALOG
             value: ${var.mlflow_trace_catalog}
           - name: MLFLOW_TRACE_SCHEMA
@@ -47,6 +58,10 @@ resources:
             value: ${var.mlflow_trace_table_prefix}
           - name: MODEL_ENDPOINT
             value: ${var.model_endpoint}
+          - name: USE_AI_GATEWAY
+            value: ${var.use_ai_gateway}
+          - name: AI_GATEWAY_ENDPOINT
+            value: ${var.ai_gateway_endpoint}
           - name: DATABRICKS_SQL_WAREHOUSE_ID
             value: ${var.sql_warehouse_id}
           - name: MLFLOW_TRACING_SQL_WAREHOUSE_ID
@@ -57,6 +72,10 @@ resources:
         - sql
         - model-serving
       resources:
+        - name: mlflow-experiment
+          experiment:
+            experiment_id: ${var.mlflow_experiment_id}
+            permission: CAN_MANAGE
         - name: sql-warehouse
           sql_warehouse:
             id: ${var.sql_warehouse_id}

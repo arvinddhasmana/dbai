@@ -1,1 +1,1 @@
-"""Vector-search-only GlobalMart contract agent."""
+"""Vector-search-only agent-supply-chain-contract-ka."""

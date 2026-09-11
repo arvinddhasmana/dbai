@@ -1,5 +1,5 @@
 bundle:
-  name: dbai-supply-chain-contract-ka-agent
+  name: agent-supply-chain-contract-ka
   engine: direct
 
 include:
@@ -28,3 +28,7 @@ targets:
     mode: production
   prod:
     mode: production
+    resources:
+      apps:
+        supply_chain_contract_agent:
+          name: agent-supply-chain-contract-ka

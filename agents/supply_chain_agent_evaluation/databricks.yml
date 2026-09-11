@@ -1,5 +1,5 @@
 bundle:
-  name: dbai-supply-chain-contract-evaluation
+  name: agent-supply-chain-contract-ka-evaluation
   engine: direct
 
 include:

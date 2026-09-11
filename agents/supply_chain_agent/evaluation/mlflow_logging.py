@@ -20,6 +20,12 @@ _NUMERIC_METRICS = {
 }
 
 
+def _judge_model_uri() -> str:
+    """Return the configured Databricks-hosted judge endpoint URI."""
+    model = os.getenv("JUDGE_MODEL", "databricks-meta-llama-3-1-8b-instruct")
+    return model if model.startswith("databricks:/") else f"databricks:/{model}"
+
+
 def _numeric_metrics(metrics: dict[str, Any]) -> dict[str, float]:
     values: dict[str, float] = {}
     for key in _NUMERIC_METRICS:
@@ -50,7 +56,7 @@ def log_evaluation_report(
         mlflow_module.set_experiment(experiment_id=experiment_id)
     elif experiment_name and hasattr(mlflow_module, "set_experiment"):
         mlflow_module.set_experiment(experiment_name=experiment_name)
-    with mlflow_module.start_run(run_name=f"contract-agent-eval-{report.mode}") as run:
+    with mlflow_module.start_run(run_name=f"agent-supply-chain-contract-ka-eval-{report.mode}") as run:
         mlflow_module.set_tags({
             "evaluation.dataset": report.dataset,
             "evaluation.mode": report.mode,
@@ -90,7 +96,7 @@ def log_genai_evaluation(
     if mlflow_module is None:
         import mlflow as mlflow_module
 
-    from mlflow.genai.scorers import scorer
+    from mlflow.genai.scorers import Correctness, RelevanceToQuery, scorer
 
     experiment_id = os.getenv("MLFLOW_EXPERIMENT_ID")
     experiment_name = os.getenv("MLFLOW_EXPERIMENT_NAME")
@@ -99,17 +105,92 @@ def log_genai_evaluation(
     elif experiment_name and hasattr(mlflow_module, "set_experiment"):
         mlflow_module.set_experiment(experiment_name=experiment_name)
 
-    @scorer(name="judge_groundedness", aggregations=[])
-    def groundedness(outputs: dict[str, Any]) -> float:
-        return float(outputs.get("judge", {}).get("groundedness", 0.0))
+    def _rows(outputs: dict[str, Any]) -> list[dict[str, Any]]:
+        evidence = outputs.get("contract_evidence") or outputs.get("evidence") or {}
+        return evidence.get("rows", []) if isinstance(evidence, dict) else []
 
-    @scorer(name="judge_completeness", aggregations=[])
-    def completeness(outputs: dict[str, Any]) -> float:
-        return float(outputs.get("judge", {}).get("completeness", 0.0))
+    def _relevant(row: dict[str, Any], expectations: dict[str, Any]) -> bool:
+        expected_ids = set(expectations.get("expected_chunk_ids", []))
+        expected_indices = set(expectations.get("expected_chunk_indices", []))
+        if expected_ids:
+            return row.get("chunk_id") in expected_ids
+        if expected_indices:
+            return (
+                row.get("source_file") == expectations.get("expected_source_file")
+                and row.get("chunk_index") in expected_indices
+            )
+        if expectations.get("expected_source_file"):
+            return row.get("source_file") == expectations["expected_source_file"]
+        if expectations.get("expected_vendor_id"):
+            return row.get("vendor_id") == expectations["expected_vendor_id"]
+        return False
+
+    @scorer(name="contract_retrieval_precision", aggregations=["mean"])
+    def retrieval_precision(
+        outputs: dict[str, Any],
+        expectations: dict[str, Any],
+    ) -> float:
+        rows = _rows(outputs)
+        if not rows:
+            return 1.0 if expectations.get("expect_empty") else 0.0
+        return sum(_relevant(row, expectations) for row in rows) / len(rows)
+
+    @scorer(name="contract_retrieval_recall", aggregations=["mean"])
+    def retrieval_recall(
+        outputs: dict[str, Any],
+        expectations: dict[str, Any],
+    ) -> float:
+        rows = _rows(outputs)
+        expected_ids = set(expectations.get("expected_chunk_ids", []))
+        expected_indices = set(expectations.get("expected_chunk_indices", []))
+        expected_count = len(expected_ids or expected_indices)
+        if not expected_count and expectations.get("expected_source_file"):
+            expected_count = 1
+        if not expected_count:
+            return 1.0 if expectations.get("expect_empty") else 0.0
+        return min(sum(_relevant(row, expectations) for row in rows) / expected_count, 1.0)
+
+    @scorer(name="contract_answer_fact_coverage", aggregations=["mean"])
+    def answer_fact_coverage(
+        outputs: dict[str, Any],
+        expectations: dict[str, Any],
+    ) -> float:
+        facts = expectations.get("required_facts") or expectations.get("expected_keywords") or []
+        response = str(outputs.get("response") or outputs.get("answer") or "").lower()
+        return sum(str(fact).lower() in response for fact in facts) / len(facts) if facts else 1.0
+
+    @scorer(name="contract_citation_correctness", aggregations=["mean"])
+    def citation_correctness(
+        outputs: dict[str, Any],
+        expectations: dict[str, Any],
+    ) -> float:
+        source_file = expectations.get("expected_source_file")
+        if expectations.get("expect_empty") or not source_file:
+            return 1.0
+        response = str(outputs.get("response") or outputs.get("answer") or "")
+        expected_indices = set(expectations.get("expected_chunk_indices", []))
+        if expected_indices:
+            return float(any(
+                f"[{source_file}, chunk {index}]" in response
+                for index in expected_indices
+            ))
+        return float(f"[{source_file}, chunk " in response)
 
     scorers = [
-        groundedness,
-        completeness,
+        retrieval_precision,
+        retrieval_recall,
+        answer_fact_coverage,
+        citation_correctness,
+        Correctness(
+            name="contract_correctness",
+            model=_judge_model_uri(),
+            aggregations=["mean"],
+        ),
+        RelevanceToQuery(
+            name="contract_relevance_to_query",
+            model=_judge_model_uri(),
+            aggregations=["mean"],
+        ),
     ]
     if not experiment_id and experiment_name and hasattr(mlflow_module, "get_experiment_by_name"):
         experiment = mlflow_module.get_experiment_by_name(experiment_name)

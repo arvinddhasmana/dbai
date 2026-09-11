@@ -33,7 +33,13 @@ class JudgeResult:
         }
 
 
-def build_prompt(question: str, answer: str, contexts: list[dict[str, Any]], required_facts: list[str]) -> str:
+def build_prompt(
+    question: str,
+    answer: str,
+    contexts: list[dict[str, Any]],
+    required_facts: list[str],
+    reference_answer: str | None = None,
+) -> str:
     """Build a bounded judge prompt with only evaluation inputs."""
     context_payload = [
         {
@@ -51,6 +57,7 @@ def build_prompt(question: str, answer: str, contexts: list[dict[str, Any]], req
         f"Question:\n{question}\n\n"
         f"Retrieved contexts:\n{json.dumps(context_payload, ensure_ascii=True)}\n\n"
         f"Required facts:\n{json.dumps(required_facts, ensure_ascii=True)}\n\n"
+        f"Reference answer:\n{reference_answer or 'None provided'}\n\n"
         f"Answer:\n{answer}\n\n"
         "JSON schema:\n"
         '{"context_precision":0.0,"context_recall":0.0,"groundedness":0.0,'

@@ -12,14 +12,17 @@ from statistics import mean
 
 from evaluation.adapters import (
     DEFAULT_JUDGE_MODEL,
-    create_databricks_judge_client,
     default_agent_invoker,
     invoke_agent,
-    judge_agent_result,
     profile_agent_invoker,
 )
 from evaluation.mlflow_logging import log_evaluation_report, log_genai_evaluation
-from evaluation.runner import EvaluationReport, _mock_search, load_dataset, score_case
+from evaluation.runner import (
+    EvaluationReport,
+    _mock_search,
+    load_dataset,
+    score_case,
+)
 
 
 def _parameter(name: str, default: str | None = None) -> str | None:
@@ -60,36 +63,48 @@ def run(
         raise ValueError("Live evaluation requires AGENT_APP_URL and DATABRICKS_TOKEN")
 
     results = []
-    judge_results = []
     evaluation_rows = []
-    judge_client = create_databricks_judge_client(profile) if mode == "live" else None
     for case in cases:
         if mode == "mock":
             retrieval = _mock_search(case.question, case.expected_vendor_id)
             agent_result = None
-            judged = None
         else:
             agent_result = invoke_agent(case, invoker)
             retrieval = agent_result.evidence
-            judged = judge_agent_result(
-                case,
-                agent_result,
-                judge_client,
-                judge_model,
-            )
-            judge_results.append((case, agent_result, judged))
         case_result = score_case(case, retrieval)
         results.append(case_result)
+        expected_response = case.reference_answer
+        if expected_response is None and case.expect_empty:
+            expected_response = "No active contract evidence was found."
+        expectations = {
+            key: value
+            for key, value in {
+                "expected_vendor_id": case.expected_vendor_id,
+                "expected_source_file": case.expected_source_file,
+                "expected_chunk_indices": list(case.expected_chunk_indices),
+                "expected_chunk_ids": list(case.expected_chunk_ids),
+                "expected_keywords": list(case.expected_keywords),
+                "required_facts": list(case.required_facts),
+                "reference_answer": expected_response,
+                "expect_empty": case.expect_empty,
+                "expected_error_code": case.expected_error_code,
+                "expected_facts": list(case.required_facts or case.expected_keywords),
+                "expected_response": expected_response,
+            }.items()
+            if value is not None
+        }
         evaluation_rows.append({
             "inputs": {"question": case.question},
             "outputs": {
                 "case_id": case.case_id,
                 "passed": case_result.passed,
                 "metrics": case_result.metrics,
+                "response": agent_result.answer if agent_result else None,
                 "answer": agent_result.answer if agent_result else None,
+                "contract_evidence": retrieval,
                 "evidence": retrieval,
-                "judge": judged.as_dict() if judged else {},
             },
+            "expectations": expectations,
         })
 
     report = EvaluationReport(
@@ -102,10 +117,6 @@ def run(
     )
     output.parent.mkdir(parents=True, exist_ok=True)
     report_payload = report.as_dict()
-    report_payload["judge_results"] = {
-        case.case_id: judged.as_dict()
-        for case, _, judged in judge_results
-    }
     output.write_text(json.dumps(report_payload, indent=2) + "\n")
     metric_names = {
         "retrieval_precision": "retrieval_precision_mean",
@@ -134,7 +145,7 @@ def run(
         report,
         report_path=output,
         aggregate_metrics=aggregate_metrics,
-        genai_rows=evaluation_rows if judge_results else None,
+        genai_rows=evaluation_rows if mode == "live" else None,
     )
     return report
 
@@ -146,10 +157,7 @@ def main() -> None:
     parser.add_argument("--output", default=_parameter("OUTPUT", "evaluation/results.json"))
     parser.add_argument(
         "--app-url",
-        default=_parameter(
-            "AGENT_APP_URL",
-            "https://dbai-supply-agent-dev-7405617519191024.4.azure.databricksapps.com",
-        ),
+        default=_parameter("AGENT_APP_URL"),
     )
     parser.add_argument("--token", default=_parameter("DATABRICKS_TOKEN"))
     parser.add_argument("--profile", default=_parameter("DATABRICKS_PROFILE"))
@@ -166,11 +174,18 @@ def main() -> None:
             "/Shared/globalmart-supply-chain-agent-uc-v2-dev",
         ),
     )
+    parser.add_argument(
+        "--mlflow-experiment-id",
+        default=_parameter("MLFLOW_EXPERIMENT_ID", "4341372968956549"),
+    )
     args = parser.parse_args()
     _configure_mlflow_tracking(args.mlflow_tracking_uri, args.profile)
     if args.mlflow_tracing_sql_warehouse_id:
         os.environ["MLFLOW_TRACING_SQL_WAREHOUSE_ID"] = args.mlflow_tracing_sql_warehouse_id
     os.environ["MLFLOW_EXPERIMENT_NAME"] = args.mlflow_experiment_name
+    if args.mlflow_experiment_id:
+        os.environ["MLFLOW_EXPERIMENT_ID"] = args.mlflow_experiment_id
+    os.environ["JUDGE_MODEL"] = args.judge_model
     report = run(
         Path(args.dataset),
         args.mode,

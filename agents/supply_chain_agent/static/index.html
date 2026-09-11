@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>GlobalMart Contract Intelligence</title>
+  <title>agent-supply-chain-contract-ka</title>
   <style>
     :root { --ink:#15232d; --muted:#667782; --paper:#f4f1e9; --panel:#fffdf8; --line:#d8d1c3; --teal:#0e6b68; --coral:#d65f4a; }
     * { box-sizing:border-box; }
@@ -33,38 +33,181 @@
 </head>
 <body>
   <main>
-    <header><div class="eyebrow">GlobalMart / Contract intelligence</div><h1>Search the active contract record.</h1></header>
+    <header><div class="eyebrow">agent-supply-chain-contract-ka / GlobalMart contracts</div><h1>Search the active contract record.</h1></header>
     <section class="workspace">
       <aside><p>Ask about vendor obligations, weather exceptions, penalties, liability, service levels, and delivery terms.</p><button class="prompt">What are the weather-delay rules for VEND-789?</button><button class="prompt">What is the delay penalty for Alpine Apparel?</button></aside>
       <section class="chat" aria-label="Contract intelligence assistant"><div class="messages" id="messages"><div class="message"><div class="role">Assistant</div><div class="content">I search current active contract evidence and cite the source file and chunk.</div></div></div><form id="chat-form"><textarea id="question" placeholder="Ask about a contract obligation..." required></textarea><button type="submit">Ask</button></form></section>
     </section>
   </main>
   <script>
-    const messages = document.getElementById('messages'); const form = document.getElementById('chat-form'); const question = document.getElementById('question'); const submit = form.querySelector('button'); const history = [];
-    function addMessage(role,text) { const row=document.createElement('div'); row.className='message'; const label=document.createElement('div'); label.className='role'; label.textContent=role; const body=document.createElement('div'); body.className='content'; body.textContent=text; row.append(label,body); messages.appendChild(row); messages.scrollTop=messages.scrollHeight; return body; }
-    function responseText(payload) { const parts=(payload?.output||[]).flatMap(item=>item.content||[]).filter(part=>part.type==='output_text'||part.type==='text').map(part=>part.text).filter(Boolean); return parts.join('\n')||'The agent did not return a final answer.'; }
-    function responseEvidence(payload) { return payload?.custom_outputs?.contract_evidence || {}; }
+    const messages = document.getElementById('messages');
+    const form = document.getElementById('chat-form');
+    const question = document.getElementById('question');
+    const submit = form.querySelector('button');
+    const history = [];
+    const conversationId = globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random()}`;
+
+    function addMessage(role, text) {
+      const row = document.createElement('div');
+      row.className = 'message';
+      const label = document.createElement('div');
+      label.className = 'role';
+      label.textContent = role;
+      const body = document.createElement('div');
+      body.className = 'content';
+      body.textContent = text;
+      row.append(label, body);
+      messages.appendChild(row);
+      messages.scrollTop = messages.scrollHeight;
+      return body;
+    }
+
+    function responseText(payload) {
+      const parts = (payload?.output || [])
+        .flatMap(item => item.content || [])
+        .filter(part => part.type === 'output_text' || part.type === 'text')
+        .map(part => part.text)
+        .filter(Boolean);
+      return parts.join('\n') || 'The agent did not return a final answer.';
+    }
+
+    function responseEvidence(payload) {
+      return payload?.custom_outputs?.contract_evidence
+        || payload?.response?.custom_outputs?.contract_evidence
+        || {};
+    }
+
     function renderAnswer(body, text, evidence) {
-      const citationPattern=/\[([^,\]]+),\s*chunk\s+(\d+)\]/g;
-      let cursor=0; let match;
-      const rows=Array.isArray(evidence.rows) ? evidence.rows : [];
-      while ((match=citationPattern.exec(text))) {
+      const citationPattern = /\[([^,\]]+),\s*chunk\s+(\d+)\]/g;
+      let cursor = 0;
+      let match;
+      const rows = Array.isArray(evidence.rows) ? evidence.rows : [];
+      while ((match = citationPattern.exec(text))) {
         body.append(document.createTextNode(text.slice(cursor, match.index)));
-        const sourceFile=match[1].trim(); const chunkIndex=Number(match[2]);
-        const citation=document.createElement('button'); citation.className='citation'; citation.type='button'; citation.textContent=match[0];
-        const row=rows.find(item=>item.source_file===sourceFile && Number(item.chunk_index)===chunkIndex);
-        citation.addEventListener('click',()=>{
-          const panel=document.createElement('div'); panel.className='evidence';
-          const heading=document.createElement('strong'); heading.textContent=`${sourceFile} / chunk ${chunkIndex}`; panel.appendChild(heading);
-          const detail=document.createElement('p'); detail.textContent=row?.chunk_text || 'The cited evidence is not available in this response.'; panel.appendChild(detail);
+        const sourceFile = match[1].trim();
+        const chunkIndex = Number(match[2]);
+        const citation = document.createElement('button');
+        citation.className = 'citation';
+        citation.type = 'button';
+        citation.textContent = match[0];
+        const row = rows.find(item => item.source_file === sourceFile
+          && Number(item.chunk_index) === chunkIndex);
+        citation.addEventListener('click', () => {
+          const panel = document.createElement('div');
+          panel.className = 'evidence';
+          const heading = document.createElement('strong');
+          heading.textContent = `${sourceFile} / chunk ${chunkIndex}`;
+          panel.appendChild(heading);
+          const detail = document.createElement('p');
+          detail.textContent = row?.chunk_text
+            || 'The cited evidence is not available in this response.';
+          panel.appendChild(detail);
           citation.replaceWith(panel);
         });
-        body.append(citation); cursor=citationPattern.lastIndex;
+        body.append(citation);
+        cursor = citationPattern.lastIndex;
       }
       body.append(document.createTextNode(text.slice(cursor)));
     }
-    document.querySelectorAll('.prompt').forEach(button=>button.addEventListener('click',()=>{question.value=button.textContent;question.focus();}));
-    form.addEventListener('submit',async event=>{event.preventDefault();const text=question.value.trim();if(!text)return;addMessage('You',text);history.push({role:'user',content:text});question.value='';submit.disabled=true;const pending=addMessage('Assistant','Searching active contract evidence...');try{const response=await fetch('/invocations',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({input:history})});const payload=await response.json();if(!response.ok)throw new Error(payload.detail||payload.message||'The agent request failed.');const answer=responseText(payload);pending.textContent='';renderAnswer(pending,answer,responseEvidence(payload));history.push({role:'assistant',content:answer});}catch(error){pending.textContent=`Unable to complete the request: ${error.message}`;}finally{submit.disabled=false;question.focus();}});
+
+    function finishResponse(state) {
+      if (state.finished) return;
+      state.finished = true;
+      state.body.textContent = '';
+      renderAnswer(state.body, state.text, state.evidence);
+      history.push({ role: 'assistant', content: state.text });
+    }
+
+    function handleStreamEvent(event, state) {
+      if (event.type === 'response.output_text.delta' && event.delta) {
+        state.text += event.delta;
+        state.body.textContent = state.text;
+        messages.scrollTop = messages.scrollHeight;
+      }
+      if (event.type === 'response.completed') {
+        state.evidence = responseEvidence(event);
+        if (!state.text) state.text = responseText(event.response || {});
+        finishResponse(state);
+      }
+      if (event.type === 'response.error') {
+        throw new Error(event.error?.message || 'The agent stream failed.');
+      }
+    }
+
+    async function readStream(response, state) {
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      while (true) {
+        const result = await reader.read();
+        buffer += decoder.decode(result.value || new Uint8Array(), { stream: !result.done });
+        const blocks = buffer.split('\n\n');
+        buffer = blocks.pop() || '';
+        for (const block of blocks) {
+          const data = block.split('\n')
+            .filter(line => line.startsWith('data:'))
+            .map(line => line.slice(5).trim())
+            .join('');
+          if (!data || data === '[DONE]') continue;
+          handleStreamEvent(JSON.parse(data), state);
+        }
+        if (result.done) break;
+      }
+      if (buffer.trim()) {
+        const data = buffer.split('\n')
+          .filter(line => line.startsWith('data:'))
+          .map(line => line.slice(5).trim())
+          .join('');
+        if (data && data !== '[DONE]') handleStreamEvent(JSON.parse(data), state);
+      }
+      finishResponse(state);
+    }
+
+    document.querySelectorAll('.prompt').forEach(button => button.addEventListener('click', () => {
+      question.value = button.textContent;
+      question.focus();
+    }));
+
+    form.addEventListener('submit', async event => {
+      event.preventDefault();
+      const text = question.value.trim();
+      if (!text) return;
+      addMessage('You', text);
+      history.push({ role: 'user', content: text });
+      question.value = '';
+      submit.disabled = true;
+      const pending = addMessage('Assistant', 'Searching active contract evidence...');
+      const state = { body: pending, text: '', evidence: {}, finished: false };
+      try {
+        const response = await fetch('/invocations', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            input: history,
+            stream: true,
+            custom_inputs: { session_id: conversationId },
+          }),
+        });
+        if (!response.ok) {
+          const payload = await response.json();
+          throw new Error(payload.detail || payload.message || 'The agent request failed.');
+        }
+        if (response.body && response.headers.get('content-type')?.includes('text/event-stream')) {
+          await readStream(response, state);
+        } else {
+          const payload = await response.json();
+          state.text = responseText(payload);
+          state.evidence = responseEvidence(payload);
+          finishResponse(state);
+        }
+      } catch (error) {
+        pending.textContent = `Unable to complete the request: ${error.message}`;
+        state.finished = true;
+      } finally {
+        submit.disabled = false;
+        question.focus();
+      }
+    });
   </script>
 </body>
 </html>

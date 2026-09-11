@@ -103,6 +103,7 @@ def judge_agent_result(
         answer=result.answer,
         contexts=result.evidence.get("rows", []),
         required_facts=list(case.required_facts),
+        reference_answer=case.reference_answer,
     )
     completion = client.chat.completions.create(
         model=model,

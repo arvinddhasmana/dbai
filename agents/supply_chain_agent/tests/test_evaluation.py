@@ -2,13 +2,13 @@ import json
 from pathlib import Path
 from types import SimpleNamespace
 
-from evaluation.runner import EvaluationReport, load_dataset, run_evaluation, score_case
+from evaluation.runner import EvaluationReport, apply_judge_quality, load_dataset, run_evaluation, score_case
 from evaluation.judge import build_prompt, parse_result
 from evaluation.validate_corpus import validate_cases, validate_live_rows
 from evaluation.runner import EvaluationCase
 from evaluation.adapters import AgentEvaluationResult, _agent_invocation_url, invoke_agent, judge_agent_result
 from evaluation.calibration import load_calibration, validate_judge_result
-from evaluation.mlflow_logging import log_evaluation_report, log_genai_evaluation
+from evaluation.mlflow_logging import _judge_model_uri, log_evaluation_report, log_genai_evaluation
 
 
 DATASET = Path(__file__).parents[1] / "evaluation" / "baseline.jsonl"
@@ -79,6 +79,36 @@ def test_retrieval_metrics_are_reported_without_changing_legacy_pass_fail():
     assert result.passed is True
     assert result.metrics["retrieval_precision"] == 1.0
     assert result.metrics["retrieval_recall"] == 1.0
+
+
+def test_judge_quality_thresholds_gate_live_case_results():
+    case = EvaluationCase(
+        case_id="quality",
+        question="What is the fee?",
+        expected_source_file="contract.txt",
+        required_facts=("$500",),
+    )
+    retrieval = {
+        "ok": True,
+        "rows": [{
+            "source_file": "contract.txt",
+            "chunk_index": 0,
+            "chunk_text": "A fixed fee of $500 applies.",
+        }],
+    }
+    result = score_case(case, retrieval)
+    judged = SimpleNamespace(
+        groundedness=0.9,
+        completeness=0.9,
+        citation_correctness=0.9,
+        unsupported_claims=0,
+        confidence=0.9,
+    )
+    passed = apply_judge_quality(case, result, "The fee is $500.", judged)
+    failed = apply_judge_quality(case, result, "The fee is unknown.", judged)
+    assert passed.passed is True
+    assert failed.passed is False
+    assert failed.metrics["answer_fact_coverage"] == 0.0
 
 
 def test_judge_contract_requires_bounded_scores_and_rationale():
@@ -322,10 +352,18 @@ def test_genai_logging_publishes_experiment_evaluation_scores():
     assert log_genai_evaluation(rows, mlflow_module=FakeMlflow()) == "evaluation-result"
     assert calls[0]["data"] == rows
     assert [scorer.name for scorer in calls[0]["scorers"]] == [
-        "judge_groundedness",
-        "judge_completeness",
+        "contract_retrieval_precision",
+        "contract_retrieval_recall",
+        "contract_answer_fact_coverage",
+        "contract_citation_correctness",
+        "contract_correctness",
+        "contract_relevance_to_query",
     ]
-    assert all(scorer.aggregations == [] for scorer in calls[0]["scorers"])
+    assert all(scorer.aggregations == ["mean"] for scorer in calls[0]["scorers"])
+
+
+def test_selected_llm_judges_use_databricks_hosted_low_cost_endpoint():
+    assert _judge_model_uri() == "databricks:/databricks-meta-llama-3-1-8b-instruct"
 
 
 def test_report_logs_genai_evaluation_inside_the_single_active_run():

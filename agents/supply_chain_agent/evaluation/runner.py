@@ -53,6 +53,13 @@ class EvaluationReport:
         return payload
 
 
+JUDGE_THRESHOLDS = {
+    "groundedness": 0.8,
+    "completeness": 0.8,
+    "citation_correctness": 0.8,
+}
+
+
 def load_dataset(path: str | Path) -> list[EvaluationCase]:
     cases = []
     for line_number, line in enumerate(Path(path).read_text().splitlines(), 1):
@@ -133,6 +140,40 @@ def score_case(case: EvaluationCase, raw_result: str | dict[str, Any]) -> CaseRe
         required_checks.append(retrieval["required_fact_coverage"] == 1.0)
     passed = all(required_checks)
     failure = None if passed else "Retrieved evidence did not satisfy the case expectations."
+    return CaseResult(case.case_id, passed, metrics, failure)
+
+
+def apply_judge_quality(
+    case: EvaluationCase,
+    result: CaseResult,
+    answer: str,
+    judged: Any,
+) -> CaseResult:
+    """Apply bounded answer-quality thresholds to a retrieval result."""
+    metrics = dict(result.metrics)
+    for field in (*JUDGE_THRESHOLDS, "unsupported_claims", "confidence"):
+        value = judged.get(field) if isinstance(judged, dict) else getattr(judged, field)
+        metrics[f"judge_{field}"] = float(value)
+
+    expected_facts = case.required_facts or case.expected_keywords
+    answer_text = answer.lower()
+    metrics["answer_fact_coverage"] = (
+        sum(fact.lower() in answer_text for fact in expected_facts) / len(expected_facts)
+        if expected_facts else 1.0
+    )
+    quality_checks = [
+        metrics[f"judge_{field}"] >= threshold
+        for field, threshold in JUDGE_THRESHOLDS.items()
+    ]
+    quality_checks.append(metrics["judge_unsupported_claims"] == 0.0)
+    if expected_facts:
+        quality_checks.append(metrics["answer_fact_coverage"] == 1.0)
+    quality_passed = all(quality_checks)
+    metrics["answer_quality_passed"] = quality_passed
+    passed = result.passed and quality_passed
+    failure = result.failure
+    if not quality_passed:
+        failure = "Generated answer did not satisfy answer-quality thresholds."
     return CaseResult(case.case_id, passed, metrics, failure)
 
 
