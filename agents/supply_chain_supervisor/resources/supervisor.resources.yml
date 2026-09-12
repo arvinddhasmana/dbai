@@ -1,0 +1,95 @@
+variables:
+  catalog:
+    description: Unity Catalog catalog containing the managed Vector Search index.
+    default: globalmart
+  schema:
+    description: Unity Catalog schema containing the managed Vector Search index.
+    default: supply_chain
+  ai_search_index:
+    description: Three-part managed Vector Search index name.
+    default: globalmart.supply_chain.vendor_contract_chunks_index_rebuilt
+  genie_space_id:
+    description: Genie space ID configured over the inventory gold tables.
+    default: 01f1ab3249ea18269d5edc4f599b895c
+  model_endpoint:
+    description: Responses-compatible Databricks model endpoint.
+    default: databricks-meta-llama-3-3-70b-instruct
+  mlflow_experiment_id:
+    description: MLflow experiment ID used for supervisor traces.
+    default: "4341372968956549"
+  mlflow_trace_catalog:
+    description: Unity Catalog catalog for trace tables.
+    default: globalmart
+  mlflow_trace_schema:
+    description: Unity Catalog schema for trace tables.
+    default: agent_observability
+  mlflow_trace_table_prefix:
+    description: Prefix for supervisor trace tables.
+    default: supervisor_traces
+  lakebase_branch:
+    description: Lakebase autoscaling branch resource path.
+    default: projects/globalmart-supervisor-memory/branches/production
+  lakebase_database:
+    description: Lakebase autoscaling database resource path.
+    default: projects/globalmart-supervisor-memory/branches/production/databases/databricks-postgres
+
+resources:
+  apps:
+    supply_chain_supervisor:
+      name: agent-supply-chain-sup-${bundle.target}
+      description: OBO-enabled GlobalMart supervisor using managed Vector Search and Genie MCP.
+      source_code_path: ..
+      config:
+        command: ["uv", "run", "start-server"]
+        env:
+          - name: MLFLOW_TRACKING_URI
+            value: databricks
+          - name: MLFLOW_REGISTRY_URI
+            value: databricks-uc
+          - name: MLFLOW_EXPERIMENT_ID
+            value: ${var.mlflow_experiment_id}
+          - name: MLFLOW_TRACE_CATALOG
+            value: ${var.mlflow_trace_catalog}
+          - name: MLFLOW_TRACE_SCHEMA
+            value: ${var.mlflow_trace_schema}
+          - name: MLFLOW_TRACE_TABLE_PREFIX
+            value: ${var.mlflow_trace_table_prefix}
+          - name: DBAI_CATALOG
+            value: ${var.catalog}
+          - name: DBAI_SCHEMA
+            value: ${var.schema}
+          - name: AI_SEARCH_INDEX
+            value: ${var.ai_search_index}
+          - name: GENIE_SPACE_ID
+            value: ${var.genie_space_id}
+          - name: MODEL_ENDPOINT
+            value: ${var.model_endpoint}
+          - name: LAKEBASE_AGENT_MEMORY_SCHEMA
+            value: agent_server
+          - name: LAKEBASE_AUTOSCALING_BRANCH
+            value: ${var.lakebase_branch}
+      user_api_scopes:
+        - sql
+        - genie
+        - model-serving
+        - vector-search
+      resources:
+        - name: mlflow-experiment
+          experiment:
+            experiment_id: ${var.mlflow_experiment_id}
+            permission: CAN_MANAGE
+        - name: postgres
+          postgres:
+            branch: ${var.lakebase_branch}
+            database: ${var.lakebase_database}
+            permission: CAN_CONNECT_AND_CREATE
+        - name: genie-space
+          genie_space:
+            name: GlobalMart Inventory Genie
+            space_id: ${var.genie_space_id}
+            permission: CAN_RUN
+        - name: vector-search-index
+          uc_securable:
+            securable_full_name: ${var.ai_search_index}
+            securable_type: TABLE
+            permission: SELECT

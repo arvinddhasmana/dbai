@@ -1,0 +1,7 @@
+command: ["uv", "run", "start-server"]
+
+env:
+- name: MLFLOW_EXPERIMENT_ID
+  valueFrom: "mlflow-experiment"
+- name: LAKEBASE_AUTOSCALING_ENDPOINT
+  valueFrom: "postgres"

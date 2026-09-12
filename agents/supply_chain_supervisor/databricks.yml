@@ -1,0 +1,30 @@
+bundle:
+  name: agent_supply_chain_supervisor
+
+include:
+  - resources/*.yml
+
+sync:
+  include:
+    - agent_server/**
+    - static/**
+    - pyproject.toml
+    - app.yaml
+  exclude:
+    - .databricks/**
+    - README.md
+    - tests/**
+    - resources/**
+    - '**/__pycache__/**'
+    - '**/*.pyc'
+
+targets:
+  dev:
+    mode: development
+    default: true
+  prod:
+    mode: production
+    resources:
+      apps:
+        supply_chain_supervisor:
+          name: agent-supply-chain-sup

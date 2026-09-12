@@ -9,7 +9,8 @@ The process has three separate lifecycles:
 1. **Administration**: configure Azure, GitHub OIDC, and Databricks access.
 2. **Infrastructure**: create the Azure resource groups and Databricks workspace.
 3. **Workload and data**: deploy the App and jobs, then load demo data and create
-   the search resources.
+  the search resources. The Supervisor App is a separate Bundle and is deployed
+  after this shared foundation exists.
 
 The administration step is normally performed once. Infrastructure and workload
 steps can be safely repeated for the selected environment.
@@ -32,6 +33,7 @@ The following commands must be available:
 - `databricks`
 - `jq`
 - `python3`
+- `uv`
 
 The Azure account must be allowed to create resource groups and Databricks
 workspaces. The one-time Databricks bootstrap administrator must be an account
@@ -79,6 +81,9 @@ after recreation. Do not copy them from an old deployment:
 - SQL Warehouse ID
 - App service-principal ID
 - AI Search endpoint and index IDs
+- Genie space ID
+- MLflow experiment IDs
+- Supervisor Lakebase branch and database resource paths
 
 ## 2. Sign In to Azure and GitHub
 
@@ -407,6 +412,11 @@ The existing populated experiment cannot be relinked to a new UC trace
 destination. Use a new experiment, such as the `uc-v2` experiment above, and
 keep the historical default-storage experiment unchanged.
 
+The experiment ID and SQL Warehouse ID shown in this section are from the
+current workspace. After workspace recreation, resolve the experiment ID for
+the configured `MLFLOW_EXPERIMENT_NAME` again and use the new warehouse ID; do
+not copy the old numeric IDs into the Supervisor Bundle.
+
 ### 9.5 Verify the App and traces
 
 Open the deployed App in a browser and sign in with a user who has SQL
@@ -524,6 +534,10 @@ answers after each index synchronization, follow the
 [Contract Change Demo Runbook](05-contract-change-demo.md). The read-only
 function checks are in `sql/02_genie_smoke_tests.sql`.
 
+Record the new Genie space ID after creating it. The Supervisor Bundle needs
+that workspace-specific ID and the Bootstrap workflow does not create or
+configure the Genie space.
+
 ## 11. Use the Mosaic AI Agent App
 
 Open the deployed `supply_chain_agent` Databricks App and ask structured,
@@ -542,6 +556,107 @@ The App uses the signed-in user's authorization for SQL. Users need `CAN USE`
 on the SQL Warehouse and the required Unity Catalog privileges on the Gold
 tables, the search index table, and `search_vendor_contracts`. Contract answers
 include source-file and chunk citations when evidence is available.
+
+## 12. Deploy the Supervisor Agent
+
+The Supervisor is a separate Databricks App Bundle at
+`agents/supply_chain_supervisor`; **Deploy Workload** and **Bootstrap Databricks
+Environment** do not deploy it. Complete Steps 4 through 10 first so the
+catalog, contract index, MLflow trace schema, SQL Warehouse, and Genie space
+exist. The Supervisor reuses those resources and adds OBO access to managed
+Vector Search and Genie, plus Lakebase-backed conversation history.
+
+Use these documents for the design and detailed checks instead of duplicating
+the implementation details here:
+
+- [Supervisor architecture](08-supervisor-agent-architecture.md)
+- [Supervisor deployment decisions and permissions](09-supervisor-deployment-decisions.md)
+- [Supervisor validation runbook](10-supervisor-validation-runbook.md)
+- [Supervisor evaluation job runner](11-agent-evaluation-job-runner.md)
+
+### Resolve Supervisor inputs for the current workspace
+
+The defaults in `agents/supply_chain_supervisor/resources/supervisor.resources.yml`
+contain IDs from the current workspace and must not be trusted after a
+workspace recreation. Resolve or recreate these inputs first:
+
+| Input | Recovery action |
+| --- | --- |
+| `catalog` | Use the current `DBAI_CATALOG` written by **Configure Databricks Environment**. |
+| `ai_search_index` | Use the three-part index created by Bootstrap after its sync is Online and Completed. |
+| `genie_space_id` | Use the new Genie space ID recorded in Step 10. |
+| `mlflow_experiment_id` | Use the current ID for `MLFLOW_EXPERIMENT_NAME` from Step 9.4. |
+| `model_endpoint` | Use a Responses-compatible model endpoint available in the new workspace. |
+| `lakebase_branch` and `lakebase_database` | Verify or recreate the dedicated autoscaling Lakebase resources, then use their current full resource paths. These are not created by the base Bundle or Genie setup. |
+
+Set the workspace-specific values locally. Do not commit them to the Bundle
+file or put tokens in this document:
+
+```
+export DATABRICKS_CONFIG_PROFILE="<workspace-profile>"
+export DBAI_CATALOG="<current-catalog>"
+export SUPERVISOR_GENIE_SPACE_ID="<current-genie-space-id>"
+export SUPERVISOR_MLFLOW_EXPERIMENT_ID="<current-mlflow-experiment-id>"
+export SUPERVISOR_LAKEBASE_BRANCH="<current-lakebase-branch-resource-path>"
+export SUPERVISOR_LAKEBASE_DATABASE="<current-lakebase-database-resource-path>"
+export SUPERVISOR_MODEL_ENDPOINT="<responses-compatible-model-endpoint>"
+export SUPERVISOR_APP_NAME="agent-supply-chain-sup-${BUNDLE_TARGET}"
+```
+
+The Lakebase paths and required App permissions are described in the
+[Supervisor deployment decisions](09-supervisor-deployment-decisions.md).
+
+### Validate and deploy the Supervisor App
+
+Pass the current values as Bundle overrides so the same checkout can be used
+for every new workspace:
+
+```
+cd agents/supply_chain_supervisor
+
+databricks bundle validate -t "$BUNDLE_TARGET" \
+  --profile "$DATABRICKS_CONFIG_PROFILE" \
+  --var="catalog=${DBAI_CATALOG}" \
+  --var="ai_search_index=${DBAI_CATALOG}.supply_chain.vendor_contract_chunks_index_rebuilt" \
+  --var="genie_space_id=${SUPERVISOR_GENIE_SPACE_ID}" \
+  --var="mlflow_experiment_id=${SUPERVISOR_MLFLOW_EXPERIMENT_ID}" \
+  --var="lakebase_branch=${SUPERVISOR_LAKEBASE_BRANCH}" \
+  --var="lakebase_database=${SUPERVISOR_LAKEBASE_DATABASE}" \
+  --var="model_endpoint=${SUPERVISOR_MODEL_ENDPOINT}"
+
+databricks bundle deploy -t "$BUNDLE_TARGET" \
+  --profile "$DATABRICKS_CONFIG_PROFILE" \
+  --var="catalog=${DBAI_CATALOG}" \
+  --var="ai_search_index=${DBAI_CATALOG}.supply_chain.vendor_contract_chunks_index_rebuilt" \
+  --var="genie_space_id=${SUPERVISOR_GENIE_SPACE_ID}" \
+  --var="mlflow_experiment_id=${SUPERVISOR_MLFLOW_EXPERIMENT_ID}" \
+  --var="lakebase_branch=${SUPERVISOR_LAKEBASE_BRANCH}" \
+  --var="lakebase_database=${SUPERVISOR_LAKEBASE_DATABASE}" \
+  --var="model_endpoint=${SUPERVISOR_MODEL_ENDPOINT}"
+```
+
+After deployment, grant the Supervisor App service principal access to the
+current catalog, trace schema, trace tables, and AI Search endpoint. This is
+separate from the Bundle's Genie, Vector Search index, Lakebase, and MLflow
+resource bindings:
+
+```
+cd ../..
+uv run python scripts/local/grant_data_access.py \
+  --app-name "$SUPERVISOR_APP_NAME" \
+  --catalog "$DBAI_CATALOG" \
+  --warehouse-id "$DATABRICKS_SQL_WAREHOUSE_ID" \
+  --user-principal ""
+```
+
+Follow the [Supervisor validation runbook](10-supervisor-validation-runbook.md)
+for local checks, OBO runtime smoke tests, streaming checks, trace inspection,
+and the required permission verification. If Supervisor evaluation is needed,
+provision its workspace-local MLflow evaluation experiment and UC dataset,
+then deploy `agents/supply_chain_supervisor_evaluation` with the current
+Supervisor App URL, App name, evaluation experiment ID, and SQL Warehouse ID;
+the [evaluation job runner](11-agent-evaluation-job-runner.md) contains that
+separate lifecycle.
 
 ## Destroy and Recreate
 
@@ -572,6 +687,12 @@ Azure deletion. Use it when the old workspace is still reachable:
 ```
 scripts/local/destroy_demo_environment.sh --yes
 ```
+
+The teardown script covers the base contract App and workload. The Supervisor
+Bundle and its evaluation Bundle are separate; stop or remove their Apps and
+jobs before deleting a reachable workspace, or redeploy them from scratch in
+the new workspace using Step 12. Never reuse the old Genie, MLflow, Lakebase,
+App, or evaluation IDs.
 
 The teardown deletes only the deployment-owned primary and Databricks managed
 resource groups. Azure platform resource groups, including `NetworkWatcherRG`,
@@ -614,6 +735,10 @@ step, especially these recovery steps:
 6. Deploy the workload.
 7. Bootstrap data.
 8. Synchronize and validate AI Search.
+9. Recreate or verify the Supervisor Genie and Lakebase resources, resolve the
+   new MLflow and warehouse IDs, and deploy the Supervisor App using Step 12.
+10. Reapply Supervisor App and evaluation permissions, then run the Supervisor
+  validation runbook.
 
 The Azure subscription ID, Databricks account ID, GitHub repository, and GitHub
 OIDC client ID normally remain unchanged. Workspace URL, workspace ID, catalog,

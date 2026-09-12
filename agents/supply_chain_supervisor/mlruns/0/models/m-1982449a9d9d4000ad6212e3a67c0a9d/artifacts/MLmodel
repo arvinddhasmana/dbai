@@ -1,0 +1,15 @@
+artifact_path: /home/arvind/workspace/dbai/agents/supply_chain_supervisor/mlruns/0/models/m-1982449a9d9d4000ad6212e3a67c0a9d/artifacts
+flavors: {}
+is_signature_from_type_hint: false
+metadata:
+  mlflow.model.isExternal: true
+mlflow_version: 3.16.0
+model_id: m-1982449a9d9d4000ad6212e3a67c0a9d
+model_uuid: m-1982449a9d9d4000ad6212e3a67c0a9d
+prompts: null
+signature:
+  inputs: '[{"type": "boolean", "required": true}]'
+  outputs: '[{"type": "boolean", "required": true}]'
+  params: null
+type_hint_from_example: false
+utc_time_created: '2026-09-11 19:36:47.497527'

@@ -1,0 +1,20 @@
+bundle:
+  name: agent_supply_chain_supervisor_evaluation
+  engine: direct
+
+include:
+  - resources/*.yml
+
+sync:
+  paths:
+    - evaluation
+    - ../../common_utils
+
+targets:
+  dev:
+    mode: development
+    default: true
+  test:
+    mode: production
+  prod:
+    mode: production

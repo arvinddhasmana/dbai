@@ -1,0 +1,55 @@
+variables:
+  evaluation_dataset:
+    description: UC-backed MLflow EvaluationDataset table.
+    default: globalmart.agent_evaluation.supervisor_cases
+  evaluation_dataset_version:
+    description: Optional immutable dataset version; blank uses the latest version.
+    default: ""
+  supervisor_app_url:
+    description: Deployed supervisor App URL used by live evaluation.
+    default: ""
+  supervisor_app_name:
+    description: Deployed supervisor App name used for notebook OAuth token exchange.
+    default: agent-supply-chain-sup-dev
+  judge_model:
+    description: Lower-cost Databricks-hosted judge endpoint.
+    default: databricks-meta-llama-3-1-8b-instruct
+  mlflow_experiment_name:
+    description: Dedicated experiment for supervisor evaluation runs.
+    default: /Shared/globalmart-supply-chain-supervisor-evaluation-dev
+  mlflow_experiment_id:
+    description: Resolved dedicated supervisor evaluation experiment ID.
+    default: ""
+  mlflow_tracing_sql_warehouse_id:
+    description: SQL warehouse used by MLflow trace assessments.
+    default: a749a7ee30b8f4f4
+
+resources:
+  jobs:
+    supervisor_evaluation:
+      name: agent-supply-chain-supervisor-${bundle.target}-evaluation
+      description: Reusable MLflow GenAI evaluation for the deployed GlobalMart supervisor.
+      tasks:
+        - task_key: evaluate
+          notebook_task:
+            notebook_path: ../evaluation/job.py
+            base_parameters:
+              MODE: live
+              EVALUATION_DATASET: ${var.evaluation_dataset}
+              EVALUATION_DATASET_VERSION: ${var.evaluation_dataset_version}
+              SUPERVISOR_APP_URL: ${var.supervisor_app_url}
+              SUPERVISOR_APP_NAME: ${var.supervisor_app_name}
+              JUDGE_MODEL: ${var.judge_model}
+              MLFLOW_EXPERIMENT_NAME: ${var.mlflow_experiment_name}
+              MLFLOW_EXPERIMENT_ID: ${var.mlflow_experiment_id}
+              MLFLOW_TRACKING_URI: databricks
+              MLFLOW_TRACING_SQL_WAREHOUSE_ID: ${var.mlflow_tracing_sql_warehouse_id}
+          environment_key: default
+      environments:
+        - environment_key: default
+          spec:
+            environment_version: "2"
+            dependencies:
+              - databricks-agents>=1.9.3
+              - databricks-sdk>=0.60.0
+              - mlflow>=3.10.0

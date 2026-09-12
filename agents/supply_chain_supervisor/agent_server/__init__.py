@@ -1,0 +1,1 @@
+"""GlobalMart supply-chain supervisor agent."""
