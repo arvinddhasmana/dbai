@@ -65,6 +65,35 @@ uv run python scripts/local/grant_data_access.py \
 
 This grants the App identity `USE CATALOG`, `USE SCHEMA`, and `SELECT`/`MODIFY` on the existing MLflow trace tables. Verify the effective grants with `SHOW GRANTS`, then restart or run the bundle App and make a fresh request before treating tracing as healthy.
 
+## App Destroy and Redeploy Lifecycle
+
+Destroying a Contract or Supervisor App bundle and deploying it again recreates
+the Databricks App source, configuration, API scopes, and manifest-declared
+bindings. It does not recreate the shared resources referenced by those
+bindings, including the SQL warehouse, MLflow experiment and trace data,
+Unity Catalog objects, Genie space, Vector Search endpoint/index, model
+endpoint, or Lakebase project. Existing Lakebase data is external to the App;
+verify that the project, branch, and database still exist instead of assuming
+that an App destroy preserved them.
+
+Manual grants are identity-bound and must be reapplied. The recreated App may
+have a new service principal/client ID and OAuth identity, and its URL may
+change. Grants for the old App identity do not automatically transfer to the
+new one. The evaluation dataset and evaluation Job are also separate from the
+two agent bundles and are not recreated by destroying or deploying those
+bundles.
+
+For a disposable App-only rebuild, record the current App URLs, App service
+principal IDs, bundle target, catalog, experiment, Lakebase paths, and SQL
+warehouse first. Destroy and deploy each agent bundle with the explicit
+warehouse variable, then run `scripts/local/grant_data_access.py` for each new
+App identity. Reconcile Supervisor evaluation permissions with
+`scripts/deployable/grant_supervisor_evaluation_access.py`, verify the
+effective grants, and update the evaluation Job's `SUPERVISOR_APP_URL` if the
+Supervisor URL changed. Run a health/direct smoke test before starting live
+evaluation. Prefer an ordinary bundle deploy and App restart for code or
+configuration changes when preserving the current App identity and URL matters.
+
 ## Evaluation and Trace Boundary
 
 Live Supervisor evaluation is intentionally a black-box App evaluation. The Job loads the governed MLflow `EvaluationDataset`, creates an MLflow `predict_fn` span for each case, and sends the case question as an authenticated HTTP `POST` to the deployed App's `/api/invocations` route. The App route forwards to MLflow AgentServer's `/invocations` handler, which calls `invoke_handler` and runs the supervisor, model, Genie, and Vector Search MCP spans.

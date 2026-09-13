@@ -47,6 +47,65 @@ databricks bundle deploy -t dev --profile "$DATABRICKS_CONFIG_PROFILE"
 
 If validation reports an unsupported resource or placeholder, correct the bundle variable rather than deploying a guessed resource. Keep the existing contract App deployment independent.
 
+### Rebuild After App Bundle Destruction
+
+Use this procedure only when the App itself must be recreated. A normal
+`bundle deploy` and App restart is sufficient for code or configuration
+changes. Before a destructive rebuild, record the current App URL and service
+principal ID, the target, catalog, shared experiment ID, Lakebase paths, and
+SQL warehouse ID.
+
+The bundle recreates the App and its declared experiment, warehouse, Genie,
+and Lakebase bindings. It does not recreate the referenced SQL warehouse,
+MLflow experiment or trace data, Unity Catalog objects, Genie space, Vector
+Search endpoint/index, model endpoint, Lakebase project, evaluation dataset,
+or evaluation Job. Existing Lakebase data must be verified separately. A new
+App identity can also invalidate manual UC, trace-table, and Vector Search
+endpoint grants.
+
+Destroy and redeploy the two agent bundles separately, using the current
+resource values and an explicit warehouse ID:
+
+```bash
+cd agents/supply_chain_agent
+databricks bundle destroy -t dev --profile "$DATABRICKS_CONFIG_PROFILE" --auto-approve
+databricks bundle deploy -t dev \
+  --profile "$DATABRICKS_CONFIG_PROFILE" \
+  --var=sql_warehouse_id="$DATABRICKS_SQL_WAREHOUSE_ID"
+
+cd ../supply_chain_supervisor
+databricks bundle destroy -t dev --profile "$DATABRICKS_CONFIG_PROFILE" --auto-approve
+databricks bundle deploy -t dev \
+  --profile "$DATABRICKS_CONFIG_PROFILE" \
+  --var=sql_warehouse_id="$DATABRICKS_SQL_WAREHOUSE_ID"
+```
+
+After each deployment, run or restart the App, query its current URL and
+service principal, and reapply access:
+
+```bash
+cd ../..
+uv run python scripts/local/grant_data_access.py \
+  --app-name agent-supply-chain-ctr-ka-dev \
+  --catalog "$DBAI_CATALOG" \
+  --warehouse-id "$DATABRICKS_SQL_WAREHOUSE_ID" \
+  --user-principal ""
+
+uv run python scripts/local/grant_data_access.py \
+  --app-name agent-supply-chain-sup-dev \
+  --catalog "$DBAI_CATALOG" \
+  --warehouse-id "$DATABRICKS_SQL_WAREHOUSE_ID" \
+  --user-principal ""
+```
+
+Rerun `scripts/deployable/grant_supervisor_evaluation_access.py` for the
+recreated Supervisor identity, verify `SHOW GRANTS`, and rerun
+`provision_supervisor_evaluation.py` only when the evaluation experiment or
+dataset needs reconciliation. The separate evaluation Job survives the two
+agent bundle operations, but its `SUPERVISOR_APP_URL` must be updated if the
+new Supervisor URL differs. Finish with `/health`, a direct invocation, and a
+live evaluation trace check.
+
 The Vector Search MCP server remains configured so its unavailable state is
 observable. If its endpoint has been removed, the Supervisor records an
 `unavailable` `supervisor.mcp` span with the error type, marks that source

@@ -278,6 +278,18 @@ Run [grant_supervisor_evaluation_access.py](../scripts/deployable/grant_supervis
 
 The contract App's permissions are outside this workflow. Do not alter them while preparing Supervisor evaluation.
 
+### App Recreation Dependency
+
+The evaluation Job is a separate Bundle from both the Contract and Supervisor
+App Bundles. Destroying and redeploying those two App Bundles does not recreate
+the evaluation Job, evaluation dataset, or shared MLflow experiment. It can,
+however, create a new Supervisor App identity and URL. After Supervisor App
+recreation, reapply the App's UC, trace-table, and Vector Search grants, rerun
+the evaluation-access grant helper, and pass the current
+`SUPERVISOR_APP_URL` (and App name when required) to the Job before running
+evaluation. Confirm `/health` and one direct `/api/invocations` request first;
+do not interpret a stale URL or stale App permissions as an evaluation failure.
+
 ## Validation Runbook
 
 1. Run the focused Supervisor tests:
