@@ -12,6 +12,8 @@
 | Conversation state | Lakebase `AsyncDatabricksSession` |
 | v1 capabilities | Read-only retrieval and analysis |
 | Existing contract App | Remains standalone and unchanged |
+| Evaluation boundary | Live evaluation calls the deployed Supervisor App over authenticated REST at `/api/invocations`; it does not import or call App internals |
+| Trace correlation | Supervisor traces and evaluation runs share experiment `4341372968956549`; W3C `traceparent` propagation links `predict_fn` to the App hierarchy |
 | Future actions | Separate tools with explicit human approval |
 
 ## Reused Resources
@@ -29,6 +31,8 @@ These values are intentionally deployment inputs, not hard-coded secrets or gues
 
 - `GENIE_SPACE_ID`: `01f1ab3249ea18269d5edc4f599b895c` (Supply Chain Inventory Management).
 - `MLFLOW_EXPERIMENT_ID`: `4341372968956549` (`/Shared/globalmart-supply-chain-agent-uc-v2-dev`).
+- `MLFLOW_TRACING_SQL_WAREHOUSE_ID`: the SQL warehouse used by MLflow to read and assess UC-backed traces; development value `a749a7ee30b8f4f4`.
+- `MLFLOW_TRACE_CATALOG`, `MLFLOW_TRACE_SCHEMA`, and `MLFLOW_TRACE_TABLE_PREFIX`: the shared trace location, currently `globalmart.agent_observability.contract_agent_traces`.
 - `LAKEBASE_BRANCH` and `LAKEBASE_DATABASE`: the dedicated `globalmart-supervisor-memory` autoscaling resources.
 - `DATABRICKS_CONFIG_PROFILE`: the CLI profile used for validation and deployment.
 - `MODEL_ENDPOINT`: a Responses-compatible Databricks model endpoint available to the App.
@@ -41,7 +45,7 @@ The bundle variables are in `agents/supply_chain_supervisor/resources/supervisor
 The App resource grants:
 
 - `CAN_RUN` on the configured Genie space.
-- `SELECT` on the existing Vector Search index.
+- Vector Search MCP remains optional at runtime; if its index or endpoint is unavailable, the Supervisor records the failure and continues with Genie.
 - `CAN_CONNECT_AND_CREATE` on the configured Lakebase database.
 - MLflow experiment management for trace publication.
 - App user API scopes for SQL, Genie, model serving, and Vector Search.
@@ -60,6 +64,23 @@ uv run python scripts/local/grant_data_access.py \
 ```
 
 This grants the App identity `USE CATALOG`, `USE SCHEMA`, and `SELECT`/`MODIFY` on the existing MLflow trace tables. Verify the effective grants with `SHOW GRANTS`, then restart or run the bundle App and make a fresh request before treating tracing as healthy.
+
+## Evaluation and Trace Boundary
+
+Live Supervisor evaluation is intentionally a black-box App evaluation. The Job loads the governed MLflow `EvaluationDataset`, creates an MLflow `predict_fn` span for each case, and sends the case question as an authenticated HTTP `POST` to the deployed App's `/api/invocations` route. The App route forwards to MLflow AgentServer's `/invocations` handler, which calls `invoke_handler` and runs the supervisor, model, Genie, and Vector Search MCP spans.
+
+The evaluation adapter adds the W3C `traceparent` header to the App request. App middleware activates that incoming context before AgentServer handles the request. `MLFLOW_TRACE_PROPAGATE_TO_OTEL_CONTEXT=true` is configured in both the evaluator and App so MLflow and OpenTelemetry instrumentation see the same active context. The resulting hierarchy is:
+
+```text
+predict_fn
+└── invoke_handler
+	├── supervisor.mcp
+	├── AgentRunner.run
+	├── call_tool
+	└── model and MCP spans
+```
+
+A direct curl or UI request still exercises the same App REST route and produces the App-side hierarchy, but it has no evaluation `predict_fn` parent. The shared URL and experiment alone do not join traces; the distributed `traceparent` header is the correlation mechanism.
 
 ## Deliberate Non-Decisions
 

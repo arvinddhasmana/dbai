@@ -23,6 +23,7 @@ from mlflow.types.responses import (
 )
 
 from agent_server.history import latest_user_item, normalize_history_items
+from agent_server.observability import configure_mlflow, start_mcp_span
 from agent_server.utils import (
     build_mcp_url,
     get_session_id,
@@ -48,6 +49,7 @@ LAKEBASE_SCHEMA = os.getenv("LAKEBASE_AGENT_MEMORY_SCHEMA", "agent_server")
 set_default_openai_api("chat_completions")
 set_trace_processors([])
 mlflow.openai.autolog()
+configure_mlflow()
 logging.getLogger("mlflow.utils.autologging_utils").setLevel(logging.ERROR)
 
 
@@ -158,13 +160,21 @@ async def connect_healthy_mcp_servers(
     unavailable: list[str] = []
     for server in servers:
         name = getattr(server, "name", "managed MCP server")
-        try:
-            connected = await stack.enter_async_context(server)
-            await connected.list_tools()
-            healthy.append(connected)
-        except Exception as error:
-            log_mcp_failure(name, error)
-            unavailable.append(name)
+        with start_mcp_span(name) as span:
+            try:
+                connected = await stack.enter_async_context(server)
+                await connected.list_tools()
+                span.set_outputs({"status": "available"})
+                healthy.append(connected)
+            except Exception as error:
+                span.set_outputs(
+                    {
+                        "status": "unavailable",
+                        "error_type": type(error).__name__,
+                    }
+                )
+                log_mcp_failure(name, error)
+                unavailable.append(name)
     return healthy, unavailable
 
 

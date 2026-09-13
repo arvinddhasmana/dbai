@@ -115,6 +115,14 @@ def grant_bootstrap_modify(client, catalog, principals, warehouse_id):
 
 def grant_sql_access(client, catalog, principal, warehouse_id):
     principal_sql = sql_principal(principal)
+    source_rows = query_rows(
+        client,
+        f"SELECT table_name FROM {catalog}.information_schema.tables "
+        f"WHERE table_schema = 'supply_chain' AND table_name IN "
+        "('vendor_contract_chunks_index_rebuilt')",
+        warehouse_id,
+    )
+    existing_source_tables = {row[0] for row in source_rows}
     trace_rows = query_rows(
         client,
         f"SELECT table_name FROM {catalog}.information_schema.tables "
@@ -131,6 +139,7 @@ def grant_sql_access(client, catalog, principal, warehouse_id):
     statements.extend(
         f"GRANT SELECT ON TABLE {catalog}.`supply_chain`.`{table}` TO {principal_sql}"
         for table in TABLES
+        if table in existing_source_tables
     )
     statements.append(
         f"GRANT EXECUTE ON FUNCTION {catalog}.`supply_chain`.`search_vendor_contracts` "

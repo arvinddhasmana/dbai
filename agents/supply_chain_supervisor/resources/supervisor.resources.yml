@@ -24,8 +24,8 @@ variables:
     description: Unity Catalog schema for trace tables.
     default: agent_observability
   mlflow_trace_table_prefix:
-    description: Prefix for supervisor trace tables.
-    default: supervisor_traces
+    description: Existing contract-agent trace table prefix shared by the supervisor.
+    default: contract_agent_traces
   lakebase_branch:
     description: Lakebase autoscaling branch resource path.
     default: projects/globalmart-supervisor-memory/branches/production
@@ -48,12 +48,18 @@ resources:
             value: databricks-uc
           - name: MLFLOW_EXPERIMENT_ID
             value: ${var.mlflow_experiment_id}
+          - name: MLFLOW_TRACE_PROPAGATE_TO_OTEL_CONTEXT
+            value: "true"
           - name: MLFLOW_TRACE_CATALOG
             value: ${var.mlflow_trace_catalog}
           - name: MLFLOW_TRACE_SCHEMA
             value: ${var.mlflow_trace_schema}
           - name: MLFLOW_TRACE_TABLE_PREFIX
             value: ${var.mlflow_trace_table_prefix}
+          - name: DATABRICKS_SQL_WAREHOUSE_ID
+            value: ${var.sql_warehouse_id}
+          - name: MLFLOW_TRACING_SQL_WAREHOUSE_ID
+            value: ${var.sql_warehouse_id}
           - name: DBAI_CATALOG
             value: ${var.catalog}
           - name: DBAI_SCHEMA
@@ -78,6 +84,10 @@ resources:
           experiment:
             experiment_id: ${var.mlflow_experiment_id}
             permission: CAN_MANAGE
+        - name: sql-warehouse
+          sql_warehouse:
+            id: ${var.sql_warehouse_id}
+            permission: CAN_USE
         - name: postgres
           postgres:
             branch: ${var.lakebase_branch}
@@ -88,8 +98,3 @@ resources:
             name: GlobalMart Inventory Genie
             space_id: ${var.genie_space_id}
             permission: CAN_RUN
-        - name: vector-search-index
-          uc_securable:
-            securable_full_name: ${var.ai_search_index}
-            securable_type: TABLE
-            permission: SELECT

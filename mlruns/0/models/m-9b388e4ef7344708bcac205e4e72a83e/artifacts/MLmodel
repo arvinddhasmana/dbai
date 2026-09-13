@@ -1,0 +1,15 @@
+artifact_path: /home/arvind/workspace/dbai/mlruns/0/models/m-9b388e4ef7344708bcac205e4e72a83e/artifacts
+flavors: {}
+is_signature_from_type_hint: false
+metadata:
+  mlflow.model.isExternal: true
+mlflow_version: 3.16.0
+model_id: m-9b388e4ef7344708bcac205e4e72a83e
+model_uuid: m-9b388e4ef7344708bcac205e4e72a83e
+prompts: null
+signature:
+  inputs: '[{"type": "boolean", "required": true}]'
+  outputs: '[{"type": "boolean", "required": true}]'
+  params: null
+type_hint_from_example: false
+utc_time_created: '2026-09-13 02:29:05.876188'

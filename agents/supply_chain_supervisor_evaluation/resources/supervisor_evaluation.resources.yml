@@ -15,11 +15,11 @@ variables:
     description: Lower-cost Databricks-hosted judge endpoint.
     default: databricks-meta-llama-3-1-8b-instruct
   mlflow_experiment_name:
-    description: Dedicated experiment for supervisor evaluation runs.
-    default: /Shared/globalmart-supply-chain-supervisor-evaluation-dev
+    description: Shared experiment for Supervisor traces and evaluation runs.
+    default: /Shared/globalmart-supply-chain-agent-uc-v2-dev
   mlflow_experiment_id:
-    description: Resolved dedicated supervisor evaluation experiment ID.
-    default: ""
+    description: Shared Supervisor trace and evaluation experiment ID.
+    default: "4341372968956549"
   mlflow_tracing_sql_warehouse_id:
     description: SQL warehouse used by MLflow trace assessments.
     default: a749a7ee30b8f4f4
@@ -43,6 +43,7 @@ resources:
               MLFLOW_EXPERIMENT_NAME: ${var.mlflow_experiment_name}
               MLFLOW_EXPERIMENT_ID: ${var.mlflow_experiment_id}
               MLFLOW_TRACKING_URI: databricks
+              MLFLOW_TRACE_PROPAGATE_TO_OTEL_CONTEXT: "true"
               MLFLOW_TRACING_SQL_WAREHOUSE_ID: ${var.mlflow_tracing_sql_warehouse_id}
           environment_key: default
       environments:

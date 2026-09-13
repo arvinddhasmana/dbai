@@ -279,7 +279,7 @@ def main() -> None:
     parser.add_argument("--genie-space-id", default="01f1ab3249ea18269d5edc4f599b895c")
     parser.add_argument("--model-endpoint", default="databricks-meta-llama-3-3-70b-instruct")
     parser.add_argument("--vector-search-endpoint", default="globalmart-supply-chain-search")
-    parser.add_argument("--experiment-id", default="2285133248665247")
+    parser.add_argument("--experiment-id", default="4341372968956549")
     parser.add_argument("--evaluation-table", default="supervisor_cases")
     parser.add_argument("--trace-schema", default="agent_observability")
     args = parser.parse_args()

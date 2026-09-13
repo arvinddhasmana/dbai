@@ -1,3 +1,5 @@
+import sys
+from contextlib import contextmanager
 from pathlib import Path
 import logging
 
@@ -6,6 +8,7 @@ from dotenv import load_dotenv
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from mlflow.genai.agent_server import AgentServer, setup_mlflow_git_based_version_tracking
+from mlflow.tracing import set_tracing_context_from_http_request_headers
 
 load_dotenv(dotenv_path=Path(__file__).parent.parent / ".env", override=True)
 
@@ -15,6 +18,35 @@ import agent_server.agent  # noqa: E402,F401
 
 agent_server = AgentServer("ResponsesAgent", enable_chat_proxy=False)
 app = agent_server.app
+
+
+@contextmanager
+def _incoming_mlflow_trace_context(request: Request):
+    if not request.headers.get("traceparent"):
+        yield
+        return
+
+    context = set_tracing_context_from_http_request_headers(dict(request.headers))
+    try:
+        context.__enter__()
+    except Exception:
+        logger.warning(
+            "Unable to activate incoming MLflow trace context; continuing with a new trace.",
+            exc_info=True,
+        )
+        yield
+        return
+
+    try:
+        yield
+    finally:
+        context.__exit__(*sys.exc_info())
+
+
+@app.middleware("http")
+async def mlflow_trace_context(request: Request, call_next):
+    with _incoming_mlflow_trace_context(request):
+        return await call_next(request)
 
 # Databricks App token authentication exposes API routes under /api/.
 _mlflow_invocations_endpoint = next(

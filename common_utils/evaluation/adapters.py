@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import time
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
@@ -12,6 +13,10 @@ from urllib.parse import quote, urlencode
 from urllib.request import Request, urlopen
 
 from common_utils.evaluation.models import AgentObservation, EvaluationCase
+from mlflow.tracing import get_tracing_context_headers_for_http_request
+
+
+logger = logging.getLogger(__name__)
 
 
 class AgentInvoker(Protocol):
@@ -115,10 +120,11 @@ def _http_invoker(
     def invoke(request: dict[str, Any]) -> Any:
         payload = json.dumps(request).encode("utf-8")
         for attempt in range(retries + 1):
+            request_headers = _invocation_headers(headers)
             http_request = Request(
                 _invocation_url(url),
                 data=payload,
-                headers=headers,
+                headers=request_headers,
                 method="POST",
             )
             try:
@@ -135,6 +141,18 @@ def _http_invoker(
         raise RuntimeError("Agent invocation exhausted retries")
 
     return invoke
+
+
+def _invocation_headers(headers: Mapping[str, str]) -> dict[str, str]:
+    request_headers = dict(headers)
+    try:
+        request_headers.update(get_tracing_context_headers_for_http_request())
+    except Exception:
+        logger.warning(
+            "Unable to propagate MLflow trace context to the deployed App.",
+            exc_info=True,
+        )
+    return request_headers
 
 
 def _runtime_credentials_provider() -> tuple[str, Callable[[], dict[str, str]]] | None:

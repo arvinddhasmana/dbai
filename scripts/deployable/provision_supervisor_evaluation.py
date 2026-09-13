@@ -13,7 +13,7 @@ from databricks.sdk import WorkspaceClient
 from databricks.sdk.errors.platform import NotFound
 
 
-DEFAULT_EXPERIMENT = "/Shared/globalmart-supply-chain-supervisor-evaluation-dev"
+DEFAULT_EXPERIMENT = "/Shared/globalmart-supply-chain-agent-uc-v2-dev"
 DEFAULT_DATASET = "globalmart.agent_evaluation.supervisor_cases"
 DEFAULT_SEED = Path(__file__).parents[2] / "agents/supply_chain_supervisor_evaluation/evaluation/dataset.jsonl"
 

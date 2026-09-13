@@ -18,7 +18,7 @@ flowchart TD
     C --> D[EvaluationCase values]
     D --> E{Mode}
     E -->|mock| F[Deterministic mock observation]
-    E -->|live| G[Managed notebook OAuth exchange]
+    E -->|live| G[Managed notebook OAuth exchange and trace context]
     G --> H[Supervisor App /api/invocations]
     F --> I[AgentObservation]
     H --> I
@@ -26,7 +26,7 @@ flowchart TD
     I --> K[Two deterministic scorers]
     J --> L[Evaluation run]
     K --> L
-    L --> M[Dedicated MLflow experiment]
+    L --> M[Shared MLflow experiment]
 ```
 
 The implementation is split across these modules:
@@ -52,12 +52,12 @@ The governed evaluation dataset is:
 - Current verified version digest: `fc9d70ad2d45bb5a4be558bf2dedcaa6`
 - Seed cases: six Supervisor scenarios
 
-The dedicated MLflow experiment is:
+The shared MLflow experiment for Supervisor traces and evaluation runs is:
 
-- Name: `/Shared/globalmart-supply-chain-supervisor-evaluation-dev`
-- Experiment ID: `2285133248665247`
+- Name: `/Shared/globalmart-supply-chain-agent-uc-v2-dev`
+- Experiment ID: `4341372968956549`
 
-The provisioning script calls `create_dataset(name=..., experiment_id=...)` when the dataset does not exist. Therefore the dataset is a managed MLflow `EvaluationDataset`, registered under Unity Catalog and associated with the dedicated experiment. It is available from the experiment's Datasets view in the Databricks UI. The Job loads it with `mlflow.genai.datasets.get_dataset()` by name and optional version.
+The provisioning script calls `create_dataset(name=..., experiment_id=...)` when the dataset does not exist. Therefore the dataset is a managed MLflow `EvaluationDataset`, registered under Unity Catalog and associated with the shared Supervisor experiment. It is available from the experiment's Datasets view in the Databricks UI. The Job loads it with `mlflow.genai.datasets.get_dataset()` by name and optional version.
 
 The dataset is also associated with each evaluation run at run time. MLflow records the dataset name, dataset ID, source table, and version digest as an input to the run. This makes a score reproducible against the exact dataset version used by the evaluator; it is stronger than recording only a free-form dataset-name tag.
 
@@ -119,15 +119,21 @@ The resource definition is [supervisor_evaluation.resources.yml](../agents/suppl
 | `SUPERVISOR_APP_NAME` | App name used to discover the OAuth audience | `agent-supply-chain-sup-dev` |
 | `MODE` | `mock` or `live` | `live` in the Job resource |
 | `JUDGE_MODEL` | Databricks-hosted judge model | `databricks-meta-llama-3-1-8b-instruct` |
-| `MLFLOW_EXPERIMENT_NAME` | Dedicated experiment fallback | `/Shared/globalmart-supply-chain-supervisor-evaluation-dev` |
-| `MLFLOW_EXPERIMENT_ID` | Resolved dedicated experiment ID | `2285133248665247` |
+| `MLFLOW_EXPERIMENT_NAME` | Shared Supervisor trace/evaluation experiment fallback | `/Shared/globalmart-supply-chain-agent-uc-v2-dev` |
+| `MLFLOW_EXPERIMENT_ID` | Shared Supervisor trace/evaluation experiment ID | `4341372968956549` |
 | `MLFLOW_TRACKING_URI` | Databricks MLflow backend | `databricks` in the Job resource |
 | `MLFLOW_TRACING_SQL_WAREHOUSE_ID` | SQL warehouse used by trace assessments | `a749a7ee30b8f4f4` |
+| `MLFLOW_TRACE_PROPAGATE_TO_OTEL_CONTEXT` | Expose the active MLflow span to OpenTelemetry propagation | `true` |
 | `DATABRICKS_PROFILE` | Local SDK profile fallback | optional |
 | `DATABRICKS_TOKEN` | Explicit local bearer-token diagnostic path | optional |
 | `OUTPUT` | Optional JSON summary output path | `evaluation/results.json` |
 
 The Job's `base_parameters` pass these values through Databricks widgets. When `dbutils` is unavailable, [job.py](../agents/supply_chain_supervisor_evaluation/evaluation/job.py) reads the same names from environment variables and command-line arguments.
+
+The notebook explicitly promotes `MLFLOW_TRACING_SQL_WAREHOUSE_ID` from its
+Databricks widget into `os.environ` before calling `mlflow.genai.evaluate()`.
+This is required because MLflow resolves the SQL warehouse from the process
+environment when it reads traces from Unity Catalog tables.
 
 ## Supervisor Job Lifecycle
 
@@ -144,7 +150,10 @@ sequenceDiagram
     loop Each evaluation input
         J->>O: Resolve App audience and exchange notebook token
         O-->>J: Audience-scoped App token
-        J->>A: POST /api/invocations with user question
+      J->>J: MLflow starts predict_fn span
+      J->>A: POST /api/invocations with question and traceparent
+      A->>A: Middleware restores trace context
+      A->>A: AgentServer /invocations calls invoke_handler
         A-->>J: Assistant response and sanitized custom_outputs
         J->>J: Build AgentObservation
     end
@@ -168,7 +177,11 @@ The Supervisor adapter sends:
 }
 ```
 
-The endpoint is normalized to `/api/invocations` unless the supplied URL already ends in `/invocations`. The adapter extracts the final assistant text and only retains sanitized evaluation metadata:
+The endpoint is normalized to `/api/invocations` when the supplied URL is the App base URL. If the supplied URL already ends in `/invocations`, the adapter uses it unchanged. For the deployed Supervisor, this is an authenticated REST request to the Databricks App, not an in-process function call and not a Model Serving endpoint.
+
+The App exposes `/api/invocations` as a deployment-facing wrapper around MLflow AgentServer's `/invocations` route. The wrapper activates any incoming MLflow trace context before forwarding to AgentServer. AgentServer then calls `invoke_handler`, which runs the supervisor and its nested model and MCP operations.
+
+The adapter extracts the final assistant text and only retains sanitized evaluation metadata:
 
 - tool family names;
 - tool names and families;
@@ -177,6 +190,27 @@ The endpoint is normalized to `/api/invocations` unless the supplied URL already
 - unavailable-tool names and history backend metadata.
 
 It does not place access tokens or raw authentication headers in MLflow outputs.
+
+### Distributed trace propagation
+
+`mlflow.genai.evaluate()` creates a `predict_fn` span around each prediction. The adapter calls `get_tracing_context_headers_for_http_request()` while that span is active and adds the resulting W3C `traceparent` header to the App request. The App middleware calls `set_tracing_context_from_http_request_headers()` before the AgentServer route executes. `MLFLOW_TRACE_PROPAGATE_TO_OTEL_CONTEXT=true` is set in the evaluator Job and the Supervisor App so MLflow spans are visible to OpenTelemetry instrumentation on both sides.
+
+The expected linked hierarchy is:
+
+```text
+predict_fn
+└── invoke_handler
+  ├── supervisor.mcp
+  ├── AgentRunner.run
+  ├── call_tool
+  └── model, Genie, and Vector Search spans
+```
+
+Without `traceparent`, the App still runs successfully and records its own `invoke_handler` hierarchy, but it becomes a separate root from the evaluation's `predict_fn` trace. Matching the App URL, experiment, or endpoint does not by itself join the traces.
+
+### Evaluation versus direct App calls
+
+Direct UI or curl requests call the same App REST route and begin at `invoke_handler`; they do not have an MLflow evaluation `predict_fn` span. Live evaluation adds the outer `predict_fn` span, calls the App over HTTP, and links the App trace beneath it through `traceparent`. This difference explains why ordinary App traces can show the full application hierarchy while an unpropagated Evaluation Run shows only a standalone prediction span.
 
 ### Managed notebook authentication
 
@@ -220,13 +254,13 @@ The adapter emits an MLflow-compatible output payload:
 
 The verified Supervisor evaluation completed successfully with:
 
-- Job run: `170873889581988`
-- MLflow run: `e3e5a4b2c61c44f5bb78cf190207677f`
+- Job run: `988977179908956`
+- MLflow run: `f8cacf7b010b4b569824385e7abd1aeb`
 - Dataset digest: `fc9d70ad2d45bb5a4be558bf2dedcaa6`
-- Traces: six `OK` traces, one prediction span per case, no response errors
-- `supervisor_correctness/mean`: `0.80`
+- Traces: six linked traces; every trace contained `predict_fn`, `invoke_handler`, and nested App spans
+- `supervisor_correctness/mean`: `0.0`
 - `supervisor_relevance_to_query/mean`: `0.8333333333333334`
-- `required_fact_coverage/mean`: `0.5611111111111111`
+- `required_fact_coverage/mean`: `0.3111111111111111`
 - `tool_routing_accuracy/mean`: `1.0`
 
 The run is valid evidence for the Supervisor path. Earlier failed or unauthorized runs must not be used as evaluation results.
@@ -236,7 +270,7 @@ The run is valid evidence for the Supervisor path. Earlier failed or unauthorize
 Run [provision_supervisor_evaluation.py](../scripts/deployable/provision_supervisor_evaluation.py) before the evaluation Job when the experiment or dataset has not been provisioned. It:
 
 1. Creates `globalmart.agent_evaluation` if needed.
-2. Resolves or creates the dedicated experiment.
+2. Resolves or creates the shared Supervisor trace/evaluation experiment.
 3. Gets or creates `globalmart.agent_evaluation.supervisor_cases` with that experiment ID.
 4. Merges seed records by case ID and preserves the managed dataset version history.
 
@@ -260,13 +294,13 @@ The contract App's permissions are outside this workflow. Do not alter them whil
    databricks bundle deploy -t dev
    ```
 
-3. Run the evaluation Job in `live` mode with the deployed Supervisor App URL and the dedicated experiment parameters.
+3. Run the evaluation Job in `live` mode with the deployed Supervisor App URL and the shared experiment parameters.
 
 4. Verify the MLflow run:
 
    - the run is `FINISHED`;
-   - all six traces are `OK`;
-   - every case has one prediction span;
+  - all six cases have linked traces;
+  - every trace contains `predict_fn` with nested `invoke_handler` and App spans;
    - no response contains an evaluator error;
    - exactly the four aggregate scorer metrics are present;
    - the UC dataset ID and version digest are recorded as run inputs.
@@ -301,7 +335,7 @@ cd /home/arvind/workspace/dbai
 PYTHONPATH=. uv run python agents/supply_chain_supervisor_evaluation/evaluation/job.py \
   --mode mock \
   --dataset globalmart.agent_evaluation.supervisor_cases \
-  --experiment-id 2285133248665247
+  --experiment-id 4341372968956549
 ```
 
 Run live mode from a managed Job by setting `SUPERVISOR_APP_URL`, `SUPERVISOR_APP_NAME`, `EVALUATION_DATASET`, `MLFLOW_EXPERIMENT_ID`, and `JUDGE_MODEL` through the Bundle parameters. Do not place access tokens in source files, dataset records, or evaluation artifacts.

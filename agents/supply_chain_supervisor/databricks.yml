@@ -1,6 +1,11 @@
 bundle:
   name: agent_supply_chain_supervisor
 
+variables:
+  sql_warehouse_id:
+    description: SQL warehouse used to query the shared MLflow trace tables.
+    default: ""
+
 include:
   - resources/*.yml
 
