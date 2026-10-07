@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>GlobalMart Supply Chain Boss</title>
+    <style>
+      :root { color-scheme: light; font: 16px/1.5 system-ui, sans-serif; }
+      body { max-width: 860px; margin: 3rem auto; padding: 0 1.25rem; color: #17202a; }
+      h1 { margin-bottom: .25rem; }
+      .muted { color: #536273; }
+      form { display: grid; gap: .75rem; margin-top: 2rem; }
+      textarea { min-height: 7rem; padding: .75rem; font: inherit; }
+      button { width: fit-content; padding: .65rem 1rem; font: inherit; cursor: pointer; }
+      #response { white-space: pre-wrap; border-left: 4px solid #167d9a; padding: .75rem 1rem; margin-top: 1.5rem; }
+      #response:empty { display: none; }
+      .row { display: flex; gap: .75rem; align-items: center; }
+      a { color: #075985; }
+    </style>
+  </head>
+  <body>
+    <h1>GlobalMart Supply Chain Boss</h1>
+    <p class="muted">Ask the supply-chain specialist a question. Penalty tracking requires your confirmation and, for Platinum vendors, manager approval. Jira items record internal work only; they do not notify or charge vendors.</p>
+    <div class="row">
+      <span id="conversation-label" class="muted"></span>
+      <button id="new-conversation" type="button">New conversation</button>
+    </div>
+    <form id="chat-form">
+      <label for="message">Message</label>
+      <textarea id="message" required maxlength="8000" placeholder="Ask about inventory or contract evidence, or request a specific penalty action."></textarea>
+      <button id="submit" type="submit">Send</button>
+    </form>
+    <div id="response" role="status" aria-live="polite"></div>
+    <p id="approval-link"></p>
+    <script>
+      const idKey = "globalmart-supply-chain-boss-conversation";
+      const newId = () => crypto.randomUUID();
+      let conversationId = localStorage.getItem(idKey) || newId();
+      localStorage.setItem(idKey, conversationId);
+      const label = document.getElementById("conversation-label");
+      const output = document.getElementById("response");
+      const approvalLink = document.getElementById("approval-link");
+      const jiraItems = document.createElement("ul");
+      jiraItems.id = "jira-items";
+      approvalLink.after(jiraItems);
+      const updateLabel = () => { label.textContent = `Conversation: ${conversationId.slice(0, 8)}`; };
+      updateLabel();
+      document.getElementById("new-conversation").addEventListener("click", () => {
+        conversationId = newId();
+        localStorage.setItem(idKey, conversationId);
+        output.textContent = "";
+        approvalLink.textContent = "";
+        jiraItems.replaceChildren();
+        updateLabel();
+      });
+      document.getElementById("chat-form").addEventListener("submit", async (event) => {
+        event.preventDefault();
+        const button = document.getElementById("submit");
+        button.disabled = true;
+        output.textContent = "Working…";
+        approvalLink.textContent = "";
+        jiraItems.replaceChildren();
+        try {
+          const response = await fetch("/api/chat", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            credentials: "same-origin",
+            body: JSON.stringify({
+              message: document.getElementById("message").value,
+              conversation_id: conversationId
+            })
+          });
+          const result = await response.json();
+          if (!response.ok) throw new Error(result.detail || "Request failed.");
+          output.textContent = result.response;
+          for (const item of result.jira_items || []) {
+            if (!item.url || !item.key) continue;
+            const row = document.createElement("li");
+            const link = document.createElement("a");
+            link.href = item.url;
+            link.textContent = `${item.key} (${item.kind})`;
+            row.append(link);
+            jiraItems.append(row);
+          }
+          if (result.approval_url) {
+            const link = document.createElement("a");
+            link.href = result.approval_url;
+            link.textContent = "Open approval status";
+            approvalLink.replaceChildren(link);
+          }
+          document.getElementById("message").value = "";
+        } catch (error) {
+          output.textContent = `Error: ${error.message}`;
+        } finally {
+          button.disabled = false;
+        }
+      });
+    </script>
+  </body>
+</html>

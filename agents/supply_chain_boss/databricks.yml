@@ -1,0 +1,74 @@
+bundle:
+  name: globalmart_supply_chain_boss
+
+variables:
+  sql_warehouse_id:
+    description: SQL warehouse used to read the vendor dimension.
+    default: a749a7ee30b8f4f4
+  mlflow_experiment_id:
+    description: MLflow experiment used to trace Boss graph runs.
+    default: "4341372968956549"
+  jira_approver_email:
+    description: Jira user email assigned to Platinum approval items.
+    default: ""
+  jira_penalty_assignee_email:
+    description: Jira user email assigned to penalty-tracking items.
+    default: ""
+  specialist_app_name:
+    description: Deployed supply-chain supervisor App used for read-only evidence.
+    default: agent-supply-chain-sup-dev
+  model_endpoint:
+    description: Chat-completions endpoint used for structured extraction and synthesis.
+    default: databricks-meta-llama-3-3-70b-instruct
+  jira_project_key:
+    description: Jira project key for approval and penalty-tracking items.
+    default: KAN
+  jira_approval_issue_type_name:
+    description: Jira issue type used for Platinum approval items.
+    default: Request
+  jira_penalty_issue_type_name:
+    description: Jira issue type used for penalty-tracking items.
+    default: VendorPenalty
+  jira_base_url:
+    description: HTTPS Jira site origin used to build browse links.
+    default: https://arvinddhasmana.atlassian.net
+  jira_mcp_url:
+    description: Optional override for system.ai.atlassian MCP Service URL; defaults from the workspace host.
+    default: ""
+  boss_app_base_url:
+    description: Public HTTPS URL used to construct manager approval links.
+    default: ""
+  lakebase_branch:
+    description: Lakebase autoscaling branch for LangGraph checkpoints.
+    default: projects/globalmart-supervisor-memory/branches/production
+  lakebase_database:
+    description: Lakebase database resource path for LangGraph checkpoints.
+    default: projects/globalmart-supervisor-memory/branches/production/databases/databricks-postgres
+
+include:
+  - resources/*.yml
+
+sync:
+  include:
+    - agent_server/**
+    - static/**
+    - pyproject.toml
+    - app.yaml
+  exclude:
+    - .databricks/**
+    - README.md
+    - tests/**
+    - resources/**
+    - '**/__pycache__/**'
+    - '**/*.pyc'
+
+targets:
+  dev:
+    mode: development
+    default: true
+  prod:
+    mode: production
+    resources:
+      apps:
+        supply_chain_boss:
+          name: agent-supply-chain-boss-prod

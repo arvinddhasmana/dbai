@@ -1,0 +1,35 @@
+[project]
+name = "globalmart-supply-chain-boss"
+version = "0.1.0"
+description = "LangGraph Boss App orchestrating supply-chain penalty workflows"
+requires-python = ">=3.11"
+dependencies = [
+    "databricks-agents>=1.9.3",
+    "databricks-langchain[memory]",
+    "databricks-openai>=0.14.0",
+    "databricks-sdk>=0.60.0",
+    "fastapi>=0.129.0",
+    "httpx>=0.28.1",
+    "langgraph>=1.0.0",
+    "mlflow>=3.10.0",
+    "python-dotenv>=1.2.1",
+    "uvicorn>=0.41.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.2",
+]
+
+[tool.uv]
+default-groups = ["dev"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["agent_server"]
+
+[project.scripts]
+start-server = "agent_server.start_server:main"

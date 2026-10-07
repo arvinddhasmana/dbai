@@ -1,0 +1,63 @@
+resources:
+  apps:
+    supply_chain_boss:
+      name: agent-supply-chain-boss-${bundle.target}
+      description: LangGraph Boss App for user-confirmed Jira penalty tracking and Platinum approval workflows.
+      source_code_path: ..
+      config:
+        command: ["uv", "run", "start-server"]
+        env:
+          - name: MLFLOW_TRACKING_URI
+            value: databricks
+          - name: MLFLOW_EXPERIMENT_ID
+            value: ${var.mlflow_experiment_id}
+          - name: SPECIALIST_APP_NAME
+            value: ${var.specialist_app_name}
+          - name: MODEL_ENDPOINT
+            value: ${var.model_endpoint}
+          - name: JIRA_PROJECT_KEY
+            value: ${var.jira_project_key}
+          - name: JIRA_APPROVAL_ISSUE_TYPE_NAME
+            value: ${var.jira_approval_issue_type_name}
+          - name: JIRA_PENALTY_ISSUE_TYPE_NAME
+            value: ${var.jira_penalty_issue_type_name}
+          - name: JIRA_APPROVER_EMAIL
+            value: ${var.jira_approver_email}
+          - name: JIRA_PENALTY_ASSIGNEE_EMAIL
+            value: ${var.jira_penalty_assignee_email}
+          - name: JIRA_BASE_URL
+            value: ${var.jira_base_url}
+          - name: DATABRICKS_SQL_WAREHOUSE_ID
+            value: ${var.sql_warehouse_id}
+          - name: JIRA_MCP_URL
+            value: ${var.jira_mcp_url}
+          - name: BOSS_APP_BASE_URL
+            value: ${var.boss_app_base_url}
+          - name: BOSS_CHECKPOINT_BACKEND
+            value: lakebase
+          - name: LAKEBASE_AUTOSCALING_BRANCH
+            value: ${var.lakebase_branch}
+      user_api_scopes:
+        - ai-gateway
+      resources:
+        - name: mlflow-experiment
+          experiment:
+            experiment_id: ${var.mlflow_experiment_id}
+            permission: CAN_MANAGE
+        - name: sql-warehouse
+          sql_warehouse:
+            id: ${var.sql_warehouse_id}
+            permission: CAN_USE
+        - name: postgres
+          postgres:
+            branch: ${var.lakebase_branch}
+            database: ${var.lakebase_database}
+            permission: CAN_CONNECT_AND_CREATE
+        - name: model-endpoint
+          serving_endpoint:
+            name: ${var.model_endpoint}
+            permission: CAN_QUERY
+        - name: specialist-app
+          app:
+            name: ${var.specialist_app_name}
+            permission: CAN_USE

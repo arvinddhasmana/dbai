@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Jira Penalty Approval</title>
+    <style>
+      :root { color-scheme: light; font: 16px/1.5 system-ui, sans-serif; }
+      body { max-width: 680px; margin: 3rem auto; padding: 0 1.25rem; color: #17202a; }
+      .actions { display: flex; gap: 1rem; margin-top: 2rem; }
+      button { padding: .7rem 1.2rem; font: inherit; cursor: pointer; }
+      #status { margin-top: 1.5rem; white-space: pre-wrap; }
+    </style>
+  </head>
+  <body>
+    <h1>Jira Penalty Approval</h1>
+    <p>Review the Jira approval item, then record your decision below.</p>
+    <p id="jira-issue"></p>
+    <p><strong>MVP limitation:</strong> any user authenticated to this App can decide. Manager-role authorization is a follow-up.</p>
+    <div class="actions">
+      <button type="button" data-decision="approve">Approve</button>
+      <button type="button" data-decision="reject">Reject</button>
+    </div>
+    <p id="status" role="status" aria-live="polite"></p>
+    <script>
+      const threadId = location.pathname.split("/").filter(Boolean).at(-1);
+      const status = document.getElementById("status");
+      const jiraIssue = document.getElementById("jira-issue");
+      const issueLink = async () => {
+        try {
+          const response = await fetch(`/api/approvals/${encodeURIComponent(threadId)}`, {
+            credentials: "same-origin"
+          });
+          const result = await response.json();
+          if (!response.ok) throw new Error(result.detail || "Approval request not found.");
+          if (result.issue_key && result.issue_url) {
+            const link = document.createElement("a");
+            link.href = result.issue_url;
+            link.textContent = `Open Jira approval item ${result.issue_key}`;
+            jiraIssue.replaceChildren(link);
+          }
+        } catch (error) {
+          status.textContent = `Unable to load approval details: ${error.message}`;
+        }
+      };
+      issueLink();
+      document.querySelectorAll("button[data-decision]").forEach((button) => {
+        button.addEventListener("click", async () => {
+          document.querySelectorAll("button").forEach((item) => { item.disabled = true; });
+          status.textContent = "Recording decision…";
+          try {
+            const response = await fetch(`/api/approvals/${encodeURIComponent(threadId)}`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              credentials: "same-origin",
+              body: JSON.stringify({ decision: button.dataset.decision })
+            });
+            const result = await response.json();
+            if (!response.ok) throw new Error(result.detail || "Decision failed.");
+            status.textContent = result.response;
+            for (const item of result.jira_items || []) {
+              if (item.kind !== "penalty_tracking" || !item.url || !item.key) continue;
+              const link = document.createElement("a");
+              link.href = item.url;
+              link.textContent = `Open penalty-tracking item ${item.key}`;
+              status.append(document.createElement("br"), link);
+            }
+          } catch (error) {
+            status.textContent = `Error: ${error.message}`;
+            document.querySelectorAll("button").forEach((item) => { item.disabled = false; });
+          }
+        });
+      });
+    </script>
+  </body>
+</html>
