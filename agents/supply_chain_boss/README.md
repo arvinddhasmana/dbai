@@ -38,19 +38,25 @@ databricks bundle deploy --target dev
 ```
 
 The Boss App's configured App resources grant its service principal access to
-the SQL warehouse, Lakebase, model endpoint, Specialist App, inventory Genie
-space, vendor contract Vector Search index, vendor policy table, and MLflow
-trace tables. The Boss requests `ai-gateway`, `sql`, `genie`,
+the SQL warehouse, Lakebase, model endpoint, Specialist App, and inventory Genie
+space. The Boss requests `ai-gateway`, `sql`, `genie`,
 `model-serving`, and `vector-search` user API scopes. These scopes are separate
-from App resource grants: the Genie and index resources grant the Boss service
-principal `CAN_RUN` and `SELECT`, respectively, while the trace spans and
-annotations/logs/metrics resources grant `MODIFY` and the vendor policy table
-resource grants `SELECT`. Deploying these resources requires the bundle
-deployer to have permission to grant those privileges.
+from App resource grants. The Genie resource grants the Boss service principal
+`CAN_RUN`. For tracing, the Boss service principal needs effective
+`USE_CATALOG` on `globalmart`, `USE_SCHEMA` on
+`globalmart.agent_observability`, and `SELECT` and `MODIFY` on each of the
+configured spans, annotations, logs, and metrics tables.
 The async checkpoint pool is opened during App startup, kept open while requests
 are served, and closed during shutdown. It health-checks pooled connections so
 stale connections after Lakebase autoscaling suspension are replaced before
 LangGraph uses them.
+MLflow LangChain autologging is enabled before the LangGraph workflow is
+imported. The Boss activates sampled inbound `traceparent` headers and forwards
+the active trace context on its `/api/responses` call to the Specialist; the
+Specialist restores that context so Boss and Specialist spans share one trace.
+Both Apps use `MLFLOW_TRACE_PROPAGATE_TO_OTEL_CONTEXT=true`, and the Boss binds
+`MLFLOW_TRACING_SQL_WAREHOUSE_ID` to its configured SQL warehouse for UC trace
+storage.
 The Boss calls `/api/responses` using the App's service-principal authorization.
 Per-request user OBO forwarding to the specialist is still a follow-up.
 The Boss-to-Specialist data path therefore uses the Boss service principal's

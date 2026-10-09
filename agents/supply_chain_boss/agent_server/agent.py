@@ -11,11 +11,16 @@ from mlflow.genai.agent_server import get_request_headers, invoke
 from mlflow.types.responses import ResponsesAgentRequest, ResponsesAgentResponse
 
 from agent_server.config import Settings, get_settings
-from agent_server.workflow import BossRuntime, create_runtime_async, handle_message
-
-_runtime: BossRuntime | None = None
 
 mlflow.langchain.autolog()
+
+from agent_server.workflow import (  # noqa: E402
+    BossRuntime,
+    create_runtime_async,
+    handle_message,
+)
+
+_runtime: BossRuntime | None = None
 
 
 def set_runtime(runtime: BossRuntime) -> None:

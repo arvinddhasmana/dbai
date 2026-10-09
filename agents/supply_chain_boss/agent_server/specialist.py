@@ -10,6 +10,7 @@ from decimal import Decimal
 import httpx
 from databricks.sdk import WorkspaceClient
 from databricks_openai import AsyncDatabricksOpenAI
+from mlflow.tracing import get_tracing_context_headers_for_http_request
 
 from agent_server.config import Settings
 from agent_server.models import Citation, PenaltyEvidence, SpecialistResult
@@ -97,6 +98,13 @@ class SpecialistClient:
         # OAuth/OBO token is an explicit follow-up; do not imply user-level data access.
         auth_headers = self._workspace_client.config.authenticate()
         headers = dict(auth_headers)
+        try:
+            headers.update(get_tracing_context_headers_for_http_request())
+        except Exception:
+            logger.warning(
+                "Unable to propagate MLflow trace context to the Specialist App.",
+                exc_info=True,
+            )
         headers["Content-Type"] = "application/json"
         request_payload = {
             "input": [{"role": "user", "content": question}],

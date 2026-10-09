@@ -1,6 +1,8 @@
 """FastAPI host for the Boss Agent and approval UI."""
 
 import logging
+import sys
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Literal
 
@@ -8,6 +10,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from mlflow.genai.agent_server import AgentServer
+from mlflow.tracing import set_tracing_context_from_http_request_headers
 from pydantic import BaseModel, ConfigDict
 
 from agent_server.agent import (
@@ -30,6 +33,51 @@ static_path = Path(__file__).parents[1] / "static"
 
 agent_server = AgentServer("ResponsesAgent", enable_chat_proxy=False)
 app = agent_server.app
+
+
+def _traceparent_is_sampled(traceparent: str) -> bool:
+    parts = traceparent.split("-")
+    if len(parts) != 4 or len(parts[3]) != 2:
+        return True
+    try:
+        flags = int(parts[3], 16)
+    except ValueError:
+        return True
+    return bool(flags & 0x01)
+
+
+@contextmanager
+def _incoming_mlflow_trace_context(request: Request):
+    traceparent = request.headers.get("traceparent")
+    if not traceparent or not _traceparent_is_sampled(traceparent):
+        if traceparent:
+            logger.info(
+                "Incoming MLflow trace context is unsampled; starting a new local trace."
+            )
+        yield
+        return
+
+    context = set_tracing_context_from_http_request_headers(dict(request.headers))
+    try:
+        context.__enter__()
+    except Exception:
+        logger.warning(
+            "Unable to activate incoming MLflow trace context; continuing with a new trace.",
+            exc_info=True,
+        )
+        yield
+        return
+
+    try:
+        yield
+    finally:
+        context.__exit__(*sys.exc_info())
+
+
+@app.middleware("http")
+async def mlflow_trace_context(request: Request, call_next):
+    with _incoming_mlflow_trace_context(request):
+        return await call_next(request)
 
 
 class ChatRequest(BaseModel):
