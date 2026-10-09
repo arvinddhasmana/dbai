@@ -78,4 +78,18 @@ class VendorPolicyLookup:
         record = dict(zip(columns, rows[0], strict=False))
         if not record.get("support_tier"):
             raise RuntimeError("The vendor record has no support_tier.")
-        return VendorPolicy.model_validate(record)
+        support_tier = record["support_tier"]
+        if not isinstance(support_tier, str):
+            raise RuntimeError("The vendor record has an invalid support_tier.")
+        normalized_support_tier = support_tier.strip()
+        if not normalized_support_tier:
+            raise RuntimeError("The vendor record has no support_tier.")
+        return VendorPolicy.model_validate(
+            {
+                **record,
+                "support_tier": normalized_support_tier,
+                "approval_required": self._settings.requires_manager_approval(
+                    normalized_support_tier
+                ),
+            }
+        )

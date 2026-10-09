@@ -26,6 +26,10 @@ build/
 dist/
 *.egg-info/
 
+# Local MLflow tracking data
+mlflow.db
+mlruns/
+
 # Local operating-system output
 .DS_Store
 Thumbs.db

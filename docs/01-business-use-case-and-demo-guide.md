@@ -158,10 +158,16 @@ The index uses `TRIGGERED` mode. After the source refresh completes:
 
 The bootstrap script is idempotent and only creates the index if it does not already exist:
 
-```
-export DATABRICKS_CONFIG_PROFILE=aiarchitect
+```bash
+# One-time setup from the repository root; requirements-dev.txt includes
+# databricks-ai-search and databricks-sdk.
+uv venv .venv
+source .venv/bin/activate
+uv pip install -r requirements-dev.txt
+
+export DATABRICKS_CONFIG_PROFILE=dbai-dev
 export AI_SEARCH_ENDPOINT=globalmart-supply-chain-search
-/opt/az/bin/python3 scripts/local/create_vendor_contract_index.py
+python scripts/local/create_vendor_contract_index.py
 ```
 
 The script uses the OAuth profile for the workspace SDK and obtains a short-lived

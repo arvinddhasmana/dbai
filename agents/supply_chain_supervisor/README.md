@@ -6,6 +6,8 @@ This App is the user-facing supervisor for GlobalMart supply-chain questions. It
 - Genie MCP for inventory Text-to-SQL and metrics.
 
 The App uses OBO for user authorization and Lakebase `AsyncDatabricksSession` for durable conversation history. Without Lakebase configuration, it accepts request-carried history for local development. V1 is read-only.
+The Lakebase session enables SQLAlchemy connection pre-ping so stale pooled
+connections are discarded and reconnected after Lakebase suspends or restarts.
 
 ## Configuration
 
@@ -20,10 +22,16 @@ LAKEBASE_DATABASE
 MODEL_ENDPOINT
 ```
 
+`GENIE_SPACE_ID` is injected from the `genie-space` resource in `app.yaml`.
+For local development, `.env` values fill unset variables without overriding
+environment values supplied by Databricks.
+
 The managed Vector Search MCP path defaults to
-`globalmart.supply_chain.vendor_contract_chunks_index_rebuilt`. The Bundle no
-longer binds that UC table, so a removed index or endpoint does not block App
-deployment; the runtime records the MCP failure and continues with Genie.
+`globalmart.supply_chain.vendor_contract_chunks_index_rebuilt`. The Bundle
+declares the index as an App resource and grants the App service principal
+`SELECT`; deployment therefore requires the index to exist and be grantable.
+At runtime, if the Vector Search MCP endpoint is unavailable, the Supervisor
+records the failure and can still answer inventory questions with Genie.
 
 Supervisor traces share the contract agent's MLflow experiment and Unity
 Catalog tables at `globalmart.agent_observability.contract_agent_traces_*`.
@@ -58,8 +66,8 @@ databricks bundle validate -t dev --profile <profile>
 databricks bundle deploy -t dev --profile <profile>
 ```
 
-The App must be granted `CAN_RUN` on the Genie space and Lakebase
-connect/create access. End users also need the underlying governed data
-permissions for OBO calls.
+The App must be granted `SELECT` on the Vector Search index, `CAN_RUN` on the
+Genie space, and Lakebase connect/create access. Because the Supervisor uses
+OBO, each caller also needs the governed data permissions for their requests.
 
 See [the architecture decision](../../docs/08-supervisor-agent-architecture.md), [deployment decisions](../../docs/09-supervisor-deployment-decisions.md), and [validation runbook](../../docs/10-supervisor-validation-runbook.md) for the full design and smoke-test matrix.

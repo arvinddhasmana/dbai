@@ -4,7 +4,7 @@ bundle:
 variables:
   sql_warehouse_id:
     description: SQL warehouse used to query the shared MLflow trace tables.
-    default: ""
+    default: a749a7ee30b8f4f4
 
 include:
   - resources/*.yml

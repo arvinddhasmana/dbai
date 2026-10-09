@@ -13,6 +13,17 @@ from mlflow.entities.trace_location import UnityCatalog
 logger = logging.getLogger(__name__)
 
 
+def _traceparent_is_sampled(traceparent: str) -> bool:
+    parts = traceparent.split("-")
+    if len(parts) != 4 or len(parts[3]) != 2:
+        return True
+    try:
+        flags = int(parts[3], 16)
+    except ValueError:
+        return True
+    return bool(flags & 0x01)
+
+
 class _NullSpan:
     def set_outputs(self, outputs):
         del outputs

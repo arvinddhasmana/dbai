@@ -1,10 +1,14 @@
 import asyncio
+from dataclasses import replace
 from decimal import Decimal
+import sys
+from types import ModuleType
 
 import pytest
 from langgraph.checkpoint.memory import MemorySaver
 
 from agent_server.config import Settings
+import agent_server.workflow as workflow_module
 from agent_server.models import (
     Citation,
     JiraIssue,
@@ -52,14 +56,18 @@ class FakeExtractor:
 
 
 class FakePolicyLookup:
-    def __init__(self, support_tier="Gold"):
+    def __init__(self, support_tier, settings):
         self.support_tier = support_tier
+        self.settings = settings
 
     async def lookup(self, vendor_id):
         return VendorPolicy(
             vendor_id=vendor_id,
             vendor_name="Northwind",
             support_tier=self.support_tier,
+            approval_required=self.settings.requires_manager_approval(
+                self.support_tier
+            ),
         )
 
 
@@ -91,10 +99,16 @@ class FakeJira:
         self.comments.append((issue_key, comment))
 
 
-def create_runtime(support_tier="Gold"):
+def create_runtime(
+    support_tier="Silver",
+    approval_required_support_tiers=("Gold", "Platinum"),
+):
     settings = Settings(
         specialist_app_name="specialist",
         model_endpoint="test-model",
+        approval_required_support_tiers=frozenset(
+            tier.casefold() for tier in approval_required_support_tiers
+        ),
         jira_project_key="KAN",
         jira_approval_issue_type_name="Request",
         jira_penalty_issue_type_name="VendorPenalty",
@@ -105,12 +119,11 @@ def create_runtime(support_tier="Gold"):
         jira_mcp_url="https://workspace.example.com/ai-gateway/mcp-services/system.ai.atlassian",
         lakebase_branch="",
         lakebase_endpoint=None,
-        app_base_url="https://boss.example.com",
         checkpoint_backend="memory",
     )
     specialist = FakeSpecialist()
     extractor = FakeExtractor()
-    policy = FakePolicyLookup(support_tier)
+    policy = FakePolicyLookup(support_tier, settings)
     jira = FakeJira()
     graph = build_graph(
         settings, specialist, extractor, policy, jira, MemorySaver()
@@ -120,6 +133,67 @@ def create_runtime(support_tier="Gold"):
 
 def run(coro):
     return asyncio.run(coro)
+
+
+def test_app_base_url_is_derived_from_request_headers():
+    from agent_server.agent import _app_base_url
+
+    assert _app_base_url(
+        {
+            "x-forwarded-host": "agent-supply-chain-boss-dev.example.com",
+            "x-forwarded-proto": "https",
+        }
+    ) == "https://agent-supply-chain-boss-dev.example.com"
+    assert _app_base_url({}) is None
+
+
+def test_lakebase_checkpointer_pool_stays_open_for_runtime_lifetime(monkeypatch):
+    events = []
+
+    class FakeCheckpointSaver:
+        def __init__(self, **kwargs):
+            self.pool_kwargs = kwargs
+            instances.append(self)
+
+        async def __aenter__(self):
+            events.append("open")
+            return self
+
+        async def __aexit__(self, exc_type, exc_val, exc_tb):
+            events.append("close")
+
+        async def setup(self):
+            assert events[-1] == "open"
+            events.append("setup")
+
+    instances = []
+    langchain_module = ModuleType("databricks_langchain")
+    langchain_module.AsyncCheckpointSaver = FakeCheckpointSaver
+    monkeypatch.setitem(sys.modules, "databricks_langchain", langchain_module)
+    monkeypatch.setattr("databricks.sdk.WorkspaceClient", lambda: object())
+    for name in (
+        "SpecialistClient",
+        "PenaltyEvidenceExtractor",
+        "VendorPolicyLookup",
+        "JiraMcpClient",
+    ):
+        monkeypatch.setattr(workflow_module, name, lambda *args: object())
+    monkeypatch.setattr(workflow_module, "build_graph", lambda *args: object())
+
+    settings = replace(
+        create_runtime()[0].settings,
+        checkpoint_backend="lakebase",
+        lakebase_branch="projects/test/branches/test",
+    )
+
+    async def verify_lifecycle():
+        runtime = await workflow_module.create_runtime_async(settings)
+        assert events == ["open", "setup"]
+        assert callable(instances[0].pool_kwargs["check"])
+        await runtime.aclose()
+        assert events == ["open", "setup", "close"]
+
+    run(verify_lifecycle())
 
 
 def send_request(runtime, conversation_id, message):
@@ -148,7 +222,7 @@ def test_informational_question_does_not_create_jira_item():
     assert jira.created == []
 
 
-def test_non_platinum_requires_exact_user_confirmation_then_creates_one_item():
+def test_non_approval_tier_requires_confirmation_then_creates_one_item():
     runtime, jira = create_runtime()
 
     pending = send_request(
@@ -171,8 +245,25 @@ def test_non_platinum_requires_exact_user_confirmation_then_creates_one_item():
     assert "does not notify or charge the vendor" in jira.created[0]["description"]
 
 
-def test_platinum_rejection_records_approval_and_creates_no_penalty_item():
-    runtime, jira = create_runtime(support_tier="Platinum")
+def test_custom_approval_tier_uses_configured_policy():
+    runtime, jira = create_runtime(
+        support_tier="Enterprise",
+        approval_required_support_tiers=("Enterprise",),
+    )
+
+    send_request(
+        runtime, "conversation-custom-tier", "Create a penalty tracking item for vendor VEND-1"
+    )
+    result = send_request(runtime, "conversation-custom-tier", "yes")
+
+    assert result["status"] == "approval_pending"
+    assert len(jira.created) == 1
+    assert jira.created[0]["issue_type_name"] == "Request"
+
+
+@pytest.mark.parametrize("support_tier", ["Gold", "Platinum"])
+def test_approval_tier_rejection_creates_no_penalty_item(support_tier):
+    runtime, jira = create_runtime(support_tier=support_tier)
 
     pending = send_request(
         runtime, "conversation-3", "Create a penalty tracking item for vendor VEND-1"
@@ -211,8 +302,11 @@ def test_platinum_rejection_records_approval_and_creates_no_penalty_item():
     assert rejected["jira_items"][0]["status"] == "rejected"
 
 
-def test_platinum_approval_creates_second_penalty_item_and_rejects_duplicate():
-    runtime, jira = create_runtime(support_tier="Platinum")
+@pytest.mark.parametrize("support_tier", ["Gold", "Platinum"])
+def test_approval_tier_creates_second_penalty_item_and_rejects_duplicate(
+    support_tier,
+):
+    runtime, jira = create_runtime(support_tier=support_tier)
 
     send_request(
         runtime, "conversation-4", "Create a penalty tracking item for vendor VEND-1"
@@ -261,7 +355,7 @@ def test_missing_vendor_email_is_not_required_for_jira_workflow():
 
 
 def test_user_cancellation_never_creates_jira_item():
-    runtime, jira = create_runtime(support_tier="Platinum")
+    runtime, jira = create_runtime(support_tier="Gold")
 
     send_request(
         runtime, "conversation-6", "Create a penalty tracking item for vendor VEND-1"
@@ -272,8 +366,8 @@ def test_user_cancellation_never_creates_jira_item():
     assert jira.created == []
 
 
-def test_platinum_rejects_unknown_or_stale_approval_decisions():
-    runtime, jira = create_runtime(support_tier="Platinum")
+def test_approval_tier_rejects_unknown_or_stale_approval_decisions():
+    runtime, jira = create_runtime(support_tier="Gold")
 
     with pytest.raises(LookupError):
         run(decide_manager_approval(runtime, "0" * 64, approved=True))

@@ -18,17 +18,17 @@ Agreed workflow:
   item.
 - A penalty action requires complete specialist evidence, a vendor policy
   lookup, and explicit user confirmation of the exact proposal.
-- `support_tier = 'Platinum'` in
-  `globalmart.supply_chain.dim_vendors` requires manager approval.
-- After user confirmation for Platinum:
+- Support tiers listed in `APPROVAL_REQUIRED_SUPPORT_TIERS` require manager
+  approval. The initial configured tiers are `Gold,Platinum`.
+- After user confirmation for an approval-required tier:
   1. Create a Jira approval item assigned to the configured approver. Include
      a minimal evidence summary and a request-specific Boss App approval URL.
   2. Pause the graph at the existing Boss App Approve/Reject page and resume
      only the matching persisted thread after a decision.
   3. Record the decision on the approval item. If approved, create a separate
      penalty-tracking item; if rejected, create no penalty-tracking item.
-- After user confirmation for a non-Platinum vendor, create one
-  penalty-tracking item without a manager-approval item.
+- After user confirmation for a vendor outside the configured approval tiers,
+  create one penalty-tracking item without a manager-approval item.
 - Assign all penalty-tracking items to the configured Jira assignee.
 - Configure the approval assignee and penalty assignee by environment. The
   initial approval account is `arvinddhasmana@gmail.com`; the initial penalty
@@ -83,6 +83,7 @@ forwarded token.
   - `JIRA_PENALTY_ISSUE_TYPE_NAME=VendorPenalty`
   - `JIRA_APPROVER_EMAIL`
   - `JIRA_PENALTY_ASSIGNEE_EMAIL`
+  - `APPROVAL_REQUIRED_SUPPORT_TIERS` (default `Gold,Platinum`)
   - `JIRA_BASE_URL` for user-facing issue links
 - Default the MCP URL to the current workspace host plus
   `/ai-gateway/mcp-services/system.ai.atlassian`.
@@ -115,17 +116,19 @@ forwarded token.
 - Remove Gmail settings, `GmailMcpSender`, `EmailMessage`, email-delivery
   state, vendor-recipient checks, and vendor-email lookup requirements.
 - Keep structured specialist evidence, quote validation, vendor identity, and
-  the deterministic Platinum policy check.
+  the deterministic support-tier approval check driven by configuration.
 - Add typed approval-item and penalty-item results to graph state, including
-  issue keys and URLs needed to reference the two Platinum items.
-- For Platinum, create a `Request` approval item only after user confirmation,
+  issue keys and URLs needed to reference both items for an approval-required
+  tier.
+- For a configured approval-required tier, create a `Request` approval item
+  only after user confirmation,
   assign it to the configured approver, include the Boss App approval URL, and
   then interrupt at the existing manager decision node.
 - Record manager approval/rejection on that Jira item. Rejection terminates
   without creating a penalty item; approval creates a separate
   `VendorPenalty` item assigned to the configured penalty assignee and
   referencing the approval item.
-- For non-Platinum, create only a `VendorPenalty` item after user
+- For other tiers, create only a `VendorPenalty` item after user
   confirmation, assigned to the configured penalty assignee.
 - Preserve graph checkpointing and resume for the matching conversation.
   Report issue links and accurate statuses; never describe item creation as
@@ -146,10 +149,10 @@ forwarded token.
 
 - Replace email tests with adapter and workflow tests for:
   - no Jira action on informational requests or before user confirmation;
-  - non-Platinum creation of one assigned `VendorPenalty`;
-  - Platinum creation/assignment of `Request`, paused approval, recorded
-    rejection with no penalty item, and approval followed by a separate
-    `VendorPenalty`;
+  - creation of one assigned `VendorPenalty` for tiers not configured for approval;
+  - Gold and Platinum creation/assignment of `Request`, paused approval,
+    recorded rejection with no penalty item, and approval followed by a
+    separate `VendorPenalty`;
   - account lookup ambiguity/failure, missing tools, malformed responses,
     permission errors, and failure-shaped API responses.
 - Update `agents/supply_chain_boss/README.md`, `databricks.yml`, and
@@ -163,9 +166,10 @@ forwarded token.
 ## Implementation status
 
 - The Boss App now uses a request-scoped `system.ai.atlassian` MCP adapter
-  instead of Gmail. The graph creates the Platinum approval item, records the
+  instead of Gmail. The graph creates approval items for support tiers listed
+  in `APPROVAL_REQUIRED_SUPPORT_TIERS` (default `Gold,Platinum`), records the
   decision, and creates the separate penalty-tracking item only on approval;
-  the non-Platinum path creates one penalty-tracking item after confirmation.
+  other tiers create one penalty-tracking item after confirmation.
 - Vendor-email lookup/gating, Gmail configuration, email models, and
   email-focused tests have been removed. The `vendor_email` source column is
   not changed or required.
@@ -205,7 +209,7 @@ forwarded token.
    visibility, include only necessary contract excerpts/vendor data, and
    define retention and cleanup.
 8. **Operational resilience:** add reconciliation for partial failure across
-   the two-item Platinum path, retry classification, sanitized metrics/traces,
+   the two-item approval path, retry classification, sanitized metrics/traces,
    audit retention, approval expiry, and escalation.
 9. **Identity isolation:** verify per-request OBO to the specialist only after
    validating its token audience/scopes; remove anonymous shared-thread
@@ -219,9 +223,9 @@ forwarded token.
 - Informational questions create no Jira items.
 - No penalty-related Jira item is created until the user confirms the exact
   evidence-backed proposal.
-- Non-Platinum confirmation creates one assigned `VendorPenalty` item.
-- Platinum confirmation creates an assigned `Request` approval item and pauses
-  the matching graph thread.
+- Confirmation for a non-configured tier creates one assigned `VendorPenalty` item.
+- Confirmation for a configured tier (default Gold or Platinum) creates an
+  assigned `Request` approval item and pauses the matching graph thread.
 - Rejection is recorded and creates no penalty item. Approval is recorded and
   creates a separate assigned `VendorPenalty` item linked to the approval
   item.

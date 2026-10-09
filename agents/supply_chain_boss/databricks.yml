@@ -9,22 +9,44 @@ variables:
     description: MLflow experiment used to trace Boss graph runs.
     default: "4341372968956549"
   jira_approver_email:
-    description: Jira user email assigned to Platinum approval items.
-    default: ""
+    description: Jira user email assigned to support-tier approval items.
   jira_penalty_assignee_email:
     description: Jira user email assigned to penalty-tracking items.
-    default: ""
   specialist_app_name:
     description: Deployed supply-chain supervisor App used for read-only evidence.
     default: agent-supply-chain-sup-dev
+  ai_search_index:
+    description: Unity Catalog index used by the Specialist for vendor contract evidence.
+    default: globalmart.supply_chain.vendor_contract_chunks_index_rebuilt
+  vendor_policy_table:
+    description: Unity Catalog table queried for vendor support-tier policy.
+    default: globalmart.supply_chain.dim_vendors
+  mlflow_trace_spans_table:
+    description: Unity Catalog trace table written by the Boss App.
+    default: globalmart.agent_observability.contract_agent_traces_otel_spans
+  mlflow_trace_annotations_table:
+    description: Unity Catalog trace annotations table written by the Boss App.
+    default: globalmart.agent_observability.contract_agent_traces_otel_annotations
+  mlflow_trace_logs_table:
+    description: Unity Catalog trace logs table written by the Boss App.
+    default: globalmart.agent_observability.contract_agent_traces_otel_logs
+  mlflow_trace_metrics_table:
+    description: Unity Catalog trace metrics table written by the Boss App.
+    default: globalmart.agent_observability.contract_agent_traces_otel_metrics
+  genie_space_id:
+    description: Genie space used by the Specialist for inventory evidence.
+    default: 01f1ab3249ea18269d5edc4f599b895c
   model_endpoint:
     description: Chat-completions endpoint used for structured extraction and synthesis.
     default: databricks-meta-llama-3-3-70b-instruct
+  approval_required_support_tiers:
+    description: Comma-separated vendor support tiers that require manager approval.
+    default: "Gold,Platinum"
   jira_project_key:
     description: Jira project key for approval and penalty-tracking items.
     default: KAN
   jira_approval_issue_type_name:
-    description: Jira issue type used for Platinum approval items.
+    description: Jira issue type used for support-tier approval items.
     default: Request
   jira_penalty_issue_type_name:
     description: Jira issue type used for penalty-tracking items.
@@ -32,12 +54,6 @@ variables:
   jira_base_url:
     description: HTTPS Jira site origin used to build browse links.
     default: https://arvinddhasmana.atlassian.net
-  jira_mcp_url:
-    description: Optional override for system.ai.atlassian MCP Service URL; defaults from the workspace host.
-    default: ""
-  boss_app_base_url:
-    description: Public HTTPS URL used to construct manager approval links.
-    default: ""
   lakebase_branch:
     description: Lakebase autoscaling branch for LangGraph checkpoints.
     default: projects/globalmart-supervisor-memory/branches/production

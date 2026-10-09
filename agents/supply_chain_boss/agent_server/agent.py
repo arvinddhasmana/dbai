@@ -23,6 +23,14 @@ def set_runtime(runtime: BossRuntime) -> None:
     _runtime = runtime
 
 
+async def close_runtime() -> None:
+    global _runtime
+    if _runtime is None:
+        return
+    await _runtime.aclose()
+    _runtime = None
+
+
 def get_runtime() -> BossRuntime:
     if _runtime is None:
         raise RuntimeError("Boss Agent runtime has not been initialized.")
@@ -73,16 +81,13 @@ def _user_access_token(headers: dict[str, Any]) -> str | None:
     return normalized.get("x-forwarded-access-token") or None
 
 
-def _app_base_url(headers: dict[str, Any], settings: Settings) -> str | None:
-    candidate = settings.app_base_url
-    if not candidate:
-        normalized = {key.casefold(): str(value) for key, value in headers.items()}
-        host = normalized.get("x-forwarded-host") or normalized.get("host")
-        protocol = normalized.get("x-forwarded-proto", "https")
-        if host and "://" not in host and "\n" not in host:
-            candidate = f"{protocol}://{host}"
-    if not candidate:
+def _app_base_url(headers: dict[str, Any]) -> str | None:
+    normalized = {key.casefold(): str(value) for key, value in headers.items()}
+    host = normalized.get("x-forwarded-host") or normalized.get("host")
+    protocol = normalized.get("x-forwarded-proto", "https")
+    if not host or "://" in host or "\n" in host:
         return None
+    candidate = f"{protocol}://{host}"
     parsed = urlsplit(candidate)
     if (
         parsed.scheme != "https"
@@ -106,7 +111,7 @@ async def invoke_handler(request: ResponsesAgentRequest) -> ResponsesAgentRespon
         conversation_id=_conversation_id(request),
         message=_latest_user_message(request),
         user_id=user_id,
-        app_base_url=_app_base_url(headers, runtime.settings),
+        app_base_url=_app_base_url(headers),
         user_access_token=_user_access_token(headers),
     )
     return ResponsesAgentResponse(

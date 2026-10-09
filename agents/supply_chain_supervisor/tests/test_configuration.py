@@ -41,6 +41,18 @@ def test_mlflow_uses_shared_contract_trace_location(monkeypatch):
     assert calls["trace_location"].table_prefix == "contract_agent_traces"
 
 
+@pytest.mark.parametrize(
+    ("traceparent", "expected"),
+    [
+        ("00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01", True),
+        ("00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-00", False),
+        ("malformed", True),
+    ],
+)
+def test_traceparent_sampling_decision(traceparent, expected):
+    assert observability._traceparent_is_sampled(traceparent) is expected
+
+
 def test_unavailable_vector_search_does_not_block_genie(monkeypatch):
     span_outputs = []
 
@@ -125,7 +137,9 @@ def test_lakebase_options_accept_full_branch_path(monkeypatch):
         "LAKEBASE_AUTOSCALING_BRANCH",
         "projects/project/branches/production",
     )
-    assert agent._lakebase_options(object())["branch"] == "projects/project/branches/production"
+    options = agent._lakebase_options(object())
+    assert options["branch"] == "projects/project/branches/production"
+    assert options["pool_pre_ping"] is True
 
 
 def test_scoped_session_id_is_user_specific():

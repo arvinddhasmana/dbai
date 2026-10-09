@@ -45,10 +45,7 @@ class VendorPolicy(BaseModel):
     vendor_id: str
     vendor_name: str | None = None
     support_tier: str
-
-    @property
-    def approval_required(self) -> bool:
-        return self.support_tier.casefold() == "platinum"
+    approval_required: bool
 
 
 class PenaltyProposal(BaseModel):

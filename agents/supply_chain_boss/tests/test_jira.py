@@ -11,6 +11,7 @@ def settings():
     return Settings(
         specialist_app_name="specialist",
         model_endpoint="model",
+        approval_required_support_tiers=frozenset({"gold", "platinum"}),
         jira_project_key="KAN",
         jira_approval_issue_type_name="Request",
         jira_penalty_issue_type_name="VendorPenalty",
@@ -21,7 +22,6 @@ def settings():
         jira_mcp_url="https://workspace.example.com/ai-gateway/mcp-services/system.ai.atlassian",
         lakebase_branch="",
         lakebase_endpoint=None,
-        app_base_url="https://boss.example.com",
         checkpoint_backend="memory",
     )
 

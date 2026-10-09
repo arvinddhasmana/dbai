@@ -203,9 +203,20 @@ steps only when recovering or inspecting one component:
   supported `.txt`, `.md`, `.csv`, `.json`, `.html`, or `.pdf` files.
 2. Run `databricks bundle run generate_mock_data -t "$BUNDLE_TARGET"` and
   `databricks bundle run refresh_vendor_contract_chunks -t "$BUNDLE_TARGET"`.
-3. Run `scripts/local/create_vendor_contract_index.py` to provision the
-  endpoint and triggered Delta Sync index if they are missing. Creating the
-  index automatically starts its initial synchronization.
+3. Provision the endpoint and triggered Delta Sync index if they are missing.
+  From the repository root, use a Python environment with
+  `requirements-dev.txt` installed (`databricks-ai-search` is required):
+
+  ```bash
+  uv venv .venv
+  source .venv/bin/activate
+  uv pip install -r requirements-dev.txt
+  export DATABRICKS_CONFIG_PROFILE=dbai-dev
+  export AI_SEARCH_ENDPOINT=globalmart-supply-chain-search
+  python scripts/local/create_vendor_contract_index.py
+  ```
+
+  Creating the index automatically starts its initial synchronization.
 4. Run `sql/01_genie_search.sql` in the configured SQL Warehouse if the Genie
   function was not created by Bootstrap.
 

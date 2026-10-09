@@ -4,12 +4,14 @@ from __future__ import annotations
 
 import hashlib
 import re
+from contextlib import AsyncExitStack
 from typing import Any, TypedDict
 from urllib.parse import quote
 
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, START, StateGraph
 from langgraph.types import Command, interrupt
+from psycopg_pool import AsyncConnectionPool
 
 from agent_server.auth import use_user_access_token
 from agent_server.config import Settings
@@ -49,6 +51,7 @@ class BossRuntime:
         extractor: PenaltyEvidenceExtractor,
         policy_lookup: VendorPolicyLookup,
         jira_client: JiraMcpClient,
+        resource_stack: AsyncExitStack | None = None,
     ) -> None:
         self.graph = graph
         self.settings = settings
@@ -56,6 +59,12 @@ class BossRuntime:
         self.extractor = extractor
         self.policy_lookup = policy_lookup
         self.jira_client = jira_client
+        self._resource_stack = resource_stack
+
+    async def aclose(self) -> None:
+        resource_stack, self._resource_stack = self._resource_stack, None
+        if resource_stack is not None:
+            await resource_stack.aclose()
 
 
 def _action_request(question: str) -> bool:
@@ -199,11 +208,11 @@ def build_graph(
 
     async def create_approval_item(state: BossState) -> BossState:
         proposal = PenaltyProposal.model_validate(state["proposal"])
-        base_url = (state.get("app_base_url") or settings.app_base_url or "").rstrip("/")
+        base_url = (state.get("app_base_url") or "").rstrip("/")
         if not base_url:
             raise RuntimeError(
-                "BOSS_APP_BASE_URL or a trusted incoming App URL is required "
-                "to create the manager approval link."
+                "A trusted incoming App URL is required to create the "
+                "manager approval link."
             )
         approval_url = f"{base_url}/approval/{quote(state['thread_id'], safe='')}"
         safe_vendor_name = re.sub(r"[\r\n]+", " ", proposal.vendor_name)[:120]
@@ -300,7 +309,10 @@ def build_graph(
     async def create_penalty_item(state: BossState) -> BossState:
         proposal = PenaltyProposal.model_validate(state["proposal"])
         if proposal.approval_required and state.get("approval_decision") is not True:
-            raise RuntimeError("A Platinum vendor penalty requires recorded manager approval.")
+            raise RuntimeError(
+                "A vendor in an approval-required support tier requires "
+                "recorded manager approval."
+            )
         safe_vendor_name = re.sub(r"[\r\n]+", " ", proposal.vendor_name)[:120]
         approval = state.get("pending_approval") or {}
         approval_reference = (
@@ -404,43 +416,58 @@ async def create_runtime_async(settings: Settings) -> BossRuntime:
     from databricks.sdk import WorkspaceClient
     from databricks_langchain import AsyncCheckpointSaver
 
-    workspace_client = WorkspaceClient()
-    if settings.checkpoint_backend == "memory":
-        checkpointer: Any = MemorySaver()
-    elif settings.lakebase_endpoint:
-        checkpointer = AsyncCheckpointSaver(
-            autoscaling_endpoint=settings.lakebase_endpoint,
-            workspace_client=workspace_client,
-            schema="supply_chain_boss",
+    resource_stack = AsyncExitStack()
+    await resource_stack.__aenter__()
+    try:
+        workspace_client = WorkspaceClient()
+        if settings.checkpoint_backend == "memory":
+            checkpointer: Any = MemorySaver()
+        elif settings.lakebase_endpoint:
+            checkpointer = AsyncCheckpointSaver(
+                autoscaling_endpoint=settings.lakebase_endpoint,
+                workspace_client=workspace_client,
+                schema="supply_chain_boss",
+                check=AsyncConnectionPool.check_connection,
+            )
+        elif settings.lakebase_branch:
+            checkpointer = AsyncCheckpointSaver(
+                branch=settings.lakebase_branch,
+                workspace_client=workspace_client,
+                schema="supply_chain_boss",
+                check=AsyncConnectionPool.check_connection,
+            )
+        else:
+            raise RuntimeError(
+                "Configure a Lakebase checkpoint branch/endpoint or explicitly set "
+                "BOSS_CHECKPOINT_BACKEND=memory for local-only runs."
+            )
+        if isinstance(checkpointer, AsyncCheckpointSaver):
+            checkpointer = await resource_stack.enter_async_context(checkpointer)
+            await checkpointer.setup()
+        specialist = SpecialistClient(settings, workspace_client)
+        extractor = PenaltyEvidenceExtractor(settings, workspace_client)
+        policy_lookup = VendorPolicyLookup(settings, workspace_client)
+        jira_client = JiraMcpClient(settings, workspace_client)
+        graph = build_graph(
+            settings,
+            specialist,
+            extractor,
+            policy_lookup,
+            jira_client,
+            checkpointer,
         )
-    elif settings.lakebase_branch:
-        checkpointer = AsyncCheckpointSaver(
-            branch=settings.lakebase_branch,
-            workspace_client=workspace_client,
-            schema="supply_chain_boss",
+        return BossRuntime(
+            graph,
+            settings,
+            specialist,
+            extractor,
+            policy_lookup,
+            jira_client,
+            resource_stack,
         )
-    else:
-        raise RuntimeError(
-            "Configure a Lakebase checkpoint branch/endpoint or explicitly set "
-            "BOSS_CHECKPOINT_BACKEND=memory for local-only runs."
-        )
-    if isinstance(checkpointer, AsyncCheckpointSaver):
-        await checkpointer.setup()
-    specialist = SpecialistClient(settings, workspace_client)
-    extractor = PenaltyEvidenceExtractor(settings, workspace_client)
-    policy_lookup = VendorPolicyLookup(settings, workspace_client)
-    jira_client = JiraMcpClient(settings, workspace_client)
-    graph = build_graph(
-        settings,
-        specialist,
-        extractor,
-        policy_lookup,
-        jira_client,
-        checkpointer,
-    )
-    return BossRuntime(
-        graph, settings, specialist, extractor, policy_lookup, jira_client
-    )
+    except BaseException:
+        await resource_stack.aclose()
+        raise
 
 
 def _thread_config(thread_id: str) -> dict[str, Any]:
@@ -552,7 +579,7 @@ async def handle_message(
     # A finished turn is reset before reuse of its persistent conversation thread.
     initial_state: BossState = {
         "question": message,
-        "app_base_url": app_base_url or runtime.settings.app_base_url,
+        "app_base_url": app_base_url,
         "thread_id": thread_id,
         "specialist": {},
         "evidence": {},

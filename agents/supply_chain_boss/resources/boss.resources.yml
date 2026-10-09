@@ -2,7 +2,7 @@ resources:
   apps:
     supply_chain_boss:
       name: agent-supply-chain-boss-${bundle.target}
-      description: LangGraph Boss App for user-confirmed Jira penalty tracking and Platinum approval workflows.
+      description: LangGraph Boss App for user-confirmed Jira penalty tracking and configured support-tier approval workflows.
       source_code_path: ..
       config:
         command: ["uv", "run", "start-server"]
@@ -15,6 +15,8 @@ resources:
             value: ${var.specialist_app_name}
           - name: MODEL_ENDPOINT
             value: ${var.model_endpoint}
+          - name: APPROVAL_REQUIRED_SUPPORT_TIERS
+            value: ${var.approval_required_support_tiers}
           - name: JIRA_PROJECT_KEY
             value: ${var.jira_project_key}
           - name: JIRA_APPROVAL_ISSUE_TYPE_NAME
@@ -29,16 +31,16 @@ resources:
             value: ${var.jira_base_url}
           - name: DATABRICKS_SQL_WAREHOUSE_ID
             value: ${var.sql_warehouse_id}
-          - name: JIRA_MCP_URL
-            value: ${var.jira_mcp_url}
-          - name: BOSS_APP_BASE_URL
-            value: ${var.boss_app_base_url}
           - name: BOSS_CHECKPOINT_BACKEND
             value: lakebase
           - name: LAKEBASE_AUTOSCALING_BRANCH
             value: ${var.lakebase_branch}
       user_api_scopes:
         - ai-gateway
+        - sql
+        - genie
+        - model-serving
+        - vector-search
       resources:
         - name: mlflow-experiment
           experiment:
@@ -61,3 +63,8 @@ resources:
           app:
             name: ${var.specialist_app_name}
             permission: CAN_USE
+        - name: inventory-genie
+          genie_space:
+            name: GlobalMart Inventory Genie
+            space_id: ${var.genie_space_id}
+            permission: CAN_RUN

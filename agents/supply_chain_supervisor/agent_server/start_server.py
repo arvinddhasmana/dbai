@@ -10,7 +10,9 @@ from fastapi.staticfiles import StaticFiles
 from mlflow.genai.agent_server import AgentServer, setup_mlflow_git_based_version_tracking
 from mlflow.tracing import set_tracing_context_from_http_request_headers
 
-load_dotenv(dotenv_path=Path(__file__).parent.parent / ".env", override=True)
+from agent_server.observability import _traceparent_is_sampled
+
+load_dotenv(dotenv_path=Path(__file__).parent.parent / ".env")
 
 logger = logging.getLogger(__name__)
 
@@ -22,7 +24,14 @@ app = agent_server.app
 
 @contextmanager
 def _incoming_mlflow_trace_context(request: Request):
-    if not request.headers.get("traceparent"):
+    traceparent = request.headers.get("traceparent")
+    if not traceparent:
+        yield
+        return
+    if not _traceparent_is_sampled(traceparent):
+        logger.info(
+            "Incoming MLflow trace context is unsampled; starting a new local trace."
+        )
         yield
         return
 

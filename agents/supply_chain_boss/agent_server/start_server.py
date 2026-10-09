@@ -14,6 +14,7 @@ from agent_server.agent import (
     _app_base_url,
     _trusted_identity,
     _user_access_token,
+    close_runtime,
     get_runtime,
     initialize,
 )
@@ -47,6 +48,11 @@ class ApprovalRequest(BaseModel):
 @app.on_event("startup")
 async def startup() -> None:
     await initialize(get_settings())
+
+
+@app.on_event("shutdown")
+async def shutdown() -> None:
+    await close_runtime()
 
 
 app.mount("/static", StaticFiles(directory=static_path), name="static")
@@ -96,7 +102,7 @@ async def chat(payload: ChatRequest, request: Request) -> dict:
             conversation_id=payload.conversation_id,
             message=payload.message.strip(),
             user_id=user_id,
-            app_base_url=_app_base_url(headers, get_settings()),
+            app_base_url=_app_base_url(headers),
             user_access_token=_user_access_token(headers),
         )
     except LookupError as error:

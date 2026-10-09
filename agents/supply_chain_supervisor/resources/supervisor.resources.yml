@@ -65,7 +65,7 @@ resources:
           - name: DBAI_SCHEMA
             value: ${var.schema}
           - name: AI_SEARCH_INDEX
-            value: ${var.ai_search_index}
+            value_from: vector-search-index
           - name: GENIE_SPACE_ID
             value: ${var.genie_space_id}
           - name: MODEL_ENDPOINT

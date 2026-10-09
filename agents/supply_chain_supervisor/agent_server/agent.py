@@ -101,6 +101,7 @@ def _lakebase_options(
         "workspace_client": workspace_client or WorkspaceClient(),
         "schema": LAKEBASE_SCHEMA,
         "create_tables": True,
+        "pool_pre_ping": True,
     }
     if endpoint:
         options["autoscaling_endpoint"] = endpoint
