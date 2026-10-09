@@ -1,1 +1,1 @@
-"""Supply-chain Boss Agent application."""
+"""LangGraph Boss App package for governed penalty proposal and approval workflows."""

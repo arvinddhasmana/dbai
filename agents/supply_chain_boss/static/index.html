@@ -1,3 +1,8 @@
+<!--
+  Custom Boss chat UI. Conversation IDs are kept in same-origin localStorage so
+  LangGraph can resume its checkpointed thread; action status and Jira links
+  come from the Boss API rather than being inferred from assistant text.
+-->
 <!doctype html>
 <html lang="en">
   <head>
@@ -34,6 +39,7 @@
     <p id="approval-link"></p>
     <script>
       const idKey = "globalmart-supply-chain-boss-conversation";
+      // Use a fresh opaque client ID; the server combines it with trusted identity.
       const newId = () => crypto.randomUUID();
       let conversationId = localStorage.getItem(idKey) || newId();
       localStorage.setItem(idKey, conversationId);
@@ -43,8 +49,10 @@
       const jiraItems = document.createElement("ul");
       jiraItems.id = "jira-items";
       approvalLink.after(jiraItems);
+      // Display only a short prefix; the full identifier stays in the request body.
       const updateLabel = () => { label.textContent = `Conversation: ${conversationId.slice(0, 8)}`; };
       updateLabel();
+      // Reset visible turn results when switching to a distinct checkpoint thread.
       document.getElementById("new-conversation").addEventListener("click", () => {
         conversationId = newId();
         localStorage.setItem(idKey, conversationId);
@@ -53,6 +61,8 @@
         jiraItems.replaceChildren();
         updateLabel();
       });
+      // The backend owns graph state and approval gates; this page only renders
+      // its response and links, and disables duplicate submits while it runs.
       document.getElementById("chat-form").addEventListener("submit", async (event) => {
         event.preventDefault();
         const button = document.getElementById("submit");

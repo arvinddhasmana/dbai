@@ -1,3 +1,8 @@
+<!--
+  Custom contract Specialist UI. It submits full role/content history to the
+  MLflow Responses endpoint and consumes SSE when available; citations are
+  rendered as buttons that reveal only matching evidence returned by retrieval.
+-->
 <!doctype html>
 <html lang="en">
 <head>
@@ -45,8 +50,10 @@
     const question = document.getElementById('question');
     const submit = form.querySelector('button');
     const history = [];
+    // The session ID follows the UI's conversation across turns for trace metadata.
     const conversationId = globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random()}`;
 
+    // Append user/model text with textContent so answer text is never interpreted as HTML.
     function addMessage(role, text) {
       const row = document.createElement('div');
       row.className = 'message';
@@ -62,6 +69,7 @@
       return body;
     }
 
+    // MLflow Responses may return several text blocks in one message.
     function responseText(payload) {
       const parts = (payload?.output || [])
         .flatMap(item => item.content || [])
@@ -71,12 +79,14 @@
       return parts.join('\n') || 'The agent did not return a final answer.';
     }
 
+    // Support both the direct output body and the wrapper shape used by stream completion.
     function responseEvidence(payload) {
       return payload?.custom_outputs?.contract_evidence
         || payload?.response?.custom_outputs?.contract_evidence
         || {};
     }
 
+    // Replace source/chunk citation tokens with safe controls backed by retrieved rows.
     function renderAnswer(body, text, evidence) {
       const citationPattern = /\[([^,\]]+),\s*chunk\s+(\d+)\]/g;
       let cursor = 0;
@@ -110,6 +120,7 @@
       body.append(document.createTextNode(text.slice(cursor)));
     }
 
+    // Render citations only after final evidence is available, then retain the turn as history.
     function finishResponse(state) {
       if (state.finished) return;
       state.finished = true;
@@ -118,6 +129,7 @@
       history.push({ role: 'assistant', content: state.text });
     }
 
+    // Accumulate text deltas, attach final retrieval evidence, and surface stream errors.
     function handleStreamEvent(event, state) {
       if (event.type === 'response.output_text.delta' && event.delta) {
         state.text += event.delta;
@@ -134,6 +146,7 @@
       }
     }
 
+    // Parse Server-Sent Events across arbitrary network chunk boundaries.
     async function readStream(response, state) {
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
@@ -163,11 +176,13 @@
       finishResponse(state);
     }
 
+    // Prompt buttons only populate the composer; submission still follows the normal API path.
     document.querySelectorAll('.prompt').forEach(button => button.addEventListener('click', () => {
       question.value = button.textContent;
       question.focus();
     }));
 
+    // Send the accumulated conversation so follow-up vendor questions can use prior turns.
     form.addEventListener('submit', async event => {
       event.preventDefault();
       const text = question.value.trim();

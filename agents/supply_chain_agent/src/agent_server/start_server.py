@@ -1,4 +1,10 @@
-"""Start the MLflow AgentServer and custom contract chat page."""
+"""Host the custom Specialist UI and MLflow Responses AgentServer.
+
+The template chat proxy is disabled because the repository's UI consumes the
+Responses API directly and renders contract citations as expandable evidence.
+Git-based MLflow version tracking is best-effort so its setup cannot prevent
+the serving process from starting.
+"""
 
 import logging
 from pathlib import Path
@@ -26,13 +32,16 @@ except Exception:
 
 @app.get("/", include_in_schema=False)
 async def index():
+    """Serve the custom contract chat interface at the App root."""
     return FileResponse(APP_ROOT / "static" / "index.html")
 
 
 @app.get("/health", include_in_schema=False)
 async def health():
+    """Expose the lightweight liveness response used by App health checks."""
     return {"status": "ok"}
 
 
 def main():
+    """Run MLflow's AgentServer with the FastAPI app defined in this module."""
     agent_server.run(app_import_string="agent_server.start_server:app")

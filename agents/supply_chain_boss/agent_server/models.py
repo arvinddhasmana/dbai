@@ -1,4 +1,8 @@
-"""Validated inputs and outputs used at the Boss Agent action boundary."""
+"""Strict data contracts at the Boss Agent's external-action boundary.
+
+Pydantic rejects unexpected fields, and monetary values use ``Decimal`` so
+penalty amounts are not silently rounded through binary floating point.
+"""
 
 from decimal import Decimal, InvalidOperation
 from typing import Any
@@ -7,6 +11,8 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class Citation(BaseModel):
+    """A source and verbatim quote supplied as evidence for a proposal."""
+
     model_config = ConfigDict(extra="forbid")
 
     source: str = Field(min_length=1)
@@ -14,6 +20,8 @@ class Citation(BaseModel):
 
 
 class PenaltyEvidence(BaseModel):
+    """Penalty facts extracted from the Specialist answer, not inferred data."""
+
     model_config = ConfigDict(extra="forbid")
 
     penalty_applicable: bool | None
@@ -28,6 +36,7 @@ class PenaltyEvidence(BaseModel):
     @field_validator("amount", mode="before")
     @classmethod
     def parse_amount(cls, value: Any) -> Decimal | None:
+        """Accept decimal-like JSON values but require a finite positive amount."""
         if value is None:
             return None
         try:
@@ -40,6 +49,8 @@ class PenaltyEvidence(BaseModel):
 
 
 class VendorPolicy(BaseModel):
+    """Authoritative vendor attributes returned by the governed SQL lookup."""
+
     model_config = ConfigDict(extra="forbid")
 
     vendor_id: str
@@ -49,6 +60,8 @@ class VendorPolicy(BaseModel):
 
 
 class PenaltyProposal(BaseModel):
+    """Complete, user-reviewable penalty details before any Jira action."""
+
     model_config = ConfigDict(extra="forbid")
 
     vendor_id: str
@@ -62,6 +75,8 @@ class PenaltyProposal(BaseModel):
 
 
 class JiraIssue(BaseModel):
+    """Minimal stable reference to a Jira issue created by the Boss."""
+
     model_config = ConfigDict(extra="forbid")
 
     key: str
@@ -69,6 +84,8 @@ class JiraIssue(BaseModel):
 
 
 class SpecialistResult(BaseModel):
+    """Normalized answer and structured outputs returned by the Specialist App."""
+
     model_config = ConfigDict(extra="forbid")
 
     answer: str

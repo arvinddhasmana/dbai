@@ -1,4 +1,9 @@
-"""Narrow, schema-validated adapter for Jira work items via system.ai.atlassian."""
+"""Narrow adapter for Jira work items through the governed Atlassian MCP Service.
+
+Only the two required Jira operations are exposed here. Tool names, argument
+schemas, success payloads, account matches, and issue identifiers are checked
+before their results are trusted; calls use the requesting user's token.
+"""
 
 import json
 import logging
@@ -16,12 +21,15 @@ logger = logging.getLogger(__name__)
 
 
 class JiraMcpClient:
+    """Create internal tracking issues and comments without exposing raw MCP tools."""
+
     def __init__(
         self,
         settings: Settings,
         workspace_client: Any,
         tools: list[Any] | None = None,
     ) -> None:
+        """Configure the client; injected tools keep integration tests deterministic."""
         self._settings = settings
         self._workspace_client = workspace_client
         self._tools = tools
@@ -33,6 +41,7 @@ class JiraMcpClient:
         description: str,
         assignee_email: str,
     ) -> JiraIssue:
+        """Resolve the assignee and create one Jira issue of the requested type."""
         normalized_summary = self._validated_summary(summary)
         base_url = self._jira_base_url()
         account_id = await self._account_id(assignee_email)
@@ -57,6 +66,7 @@ class JiraMcpClient:
         )
 
     async def add_comment(self, issue_key: str, comment: str) -> None:
+        """Record an approval result on a validated Jira issue key."""
         if not re.fullmatch(r"[A-Z][A-Z0-9]+-\d+", issue_key):
             raise ValueError("Invalid Jira issue key.")
         result = await self._call(
@@ -70,6 +80,7 @@ class JiraMcpClient:
         self._ensure_success(result, "addCommentToJiraIssue")
 
     async def _account_id(self, email: str) -> str:
+        """Require an unambiguous account match before assigning a Jira issue."""
         address = email.strip()
         if not re.fullmatch(r"[^@\s<>]+@[^@\s<>]+\.[^@\s<>]+", address):
             raise RuntimeError("A configured Jira assignee email is invalid.")
@@ -98,6 +109,7 @@ class JiraMcpClient:
 
     @staticmethod
     def _account_candidates(payload: dict[str, Any]) -> list[dict[str, Any]]:
+        """Extract candidate account records from supported MCP response shapes."""
         data = payload.get("data")
         if isinstance(data, dict):
             users = data.get("users")
@@ -114,6 +126,7 @@ class JiraMcpClient:
         return []
 
     async def _call(self, name: str, arguments: dict[str, Any]) -> Any:
+        """Invoke exactly one matching tool after validating its advertised schema."""
         tools = await self._get_tools()
         matches = [tool for tool in tools if getattr(tool, "name", None) == name]
         if len(matches) != 1:
@@ -127,6 +140,7 @@ class JiraMcpClient:
         return result
 
     async def _get_tools(self) -> list[Any]:
+        """Return injected test tools or discover MCP tools with the user's token."""
         if self._tools is not None:
             return self._tools
         token = current_user_access_token()
@@ -155,6 +169,7 @@ class JiraMcpClient:
 
     @staticmethod
     def _validate_arguments(tool: Any, arguments: dict[str, Any]) -> None:
+        """Reject unsupported or missing fields instead of guessing tool inputs."""
         schema = getattr(tool, "args_schema", None)
         if isinstance(schema, dict):
             schema_json = schema
@@ -186,6 +201,7 @@ class JiraMcpClient:
 
     @classmethod
     def _ensure_success(cls, result: Any, tool_name: str) -> None:
+        """Raise on MCP-level and embedded error responses, regardless of shape."""
         if isinstance(result, dict) and result.get("isError") is True:
             raise RuntimeError(f"Atlassian MCP tool {tool_name} returned an error.")
         if getattr(result, "isError", False) is True:
@@ -212,6 +228,7 @@ class JiraMcpClient:
 
     @staticmethod
     def _result_items(result: Any) -> list[Any]:
+        """Normalize content items from dictionary and SDK result objects."""
         if isinstance(result, list):
             return result
         if isinstance(result, dict):
@@ -222,6 +239,7 @@ class JiraMcpClient:
 
     @classmethod
     def _json_payload(cls, result: Any) -> dict[str, Any]:
+        """Parse one structured JSON payload from MCP text content."""
         for item in cls._result_items(result):
             if isinstance(item, dict) and isinstance(item.get("text"), str):
                 try:
@@ -237,12 +255,14 @@ class JiraMcpClient:
 
     @staticmethod
     def _validated_summary(summary: str) -> str:
+        """Reject blank or oversized issue summaries before sending them to Jira."""
         normalized = " ".join(summary.split()).strip()
         if not normalized or len(normalized) > 255:
             raise ValueError("Jira issue summary must contain 1 to 255 characters.")
         return normalized
 
     def _jira_base_url(self) -> str:
+        """Require a clean HTTPS Jira origin before constructing issue links."""
         candidate = self._settings.jira_base_url.rstrip("/")
         parsed = urlsplit(candidate)
         if (

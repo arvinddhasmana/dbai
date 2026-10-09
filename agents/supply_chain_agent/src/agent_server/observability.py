@@ -1,4 +1,9 @@
-"""MLflow configuration and redacted tracing helpers."""
+"""Configure MLflow tracing without putting contract content into trace spans.
+
+Trace data is stored in Unity Catalog when the configured location is available.
+Retrieval spans record only low-risk metadata such as row count and error code;
+SQL text, prompts, and retrieved contract evidence are intentionally excluded.
+"""
 
 import logging
 import os
@@ -14,12 +19,19 @@ logger = logging.getLogger(__name__)
 
 
 class _NullSpan:
+    """No-op span returned when tracing cannot be started for an invocation."""
+
     def set_outputs(self, outputs):
+        """Match the MLflow span interface while intentionally discarding outputs."""
         del outputs
 
 
 def configure_mlflow():
-    """Bind MLflow to the configured experiment without blocking app startup."""
+    """Bind the experiment and Unity Catalog trace tables, allowing startup to continue.
+
+    Observability misconfiguration is logged but does not make an otherwise
+    usable read-only contract App unavailable.
+    """
     experiment_id = os.getenv("MLFLOW_EXPERIMENT_ID")
     experiment_name = os.getenv(
         "MLFLOW_EXPERIMENT_NAME",
@@ -50,6 +62,7 @@ def configure_mlflow():
 
 @contextmanager
 def _start_span(name, span_type, attributes):
+    """Start a span with redacted caller-selected attributes and safe teardown."""
     span_context = mlflow.start_span(
         name=name,
         span_type=span_type,
@@ -72,10 +85,10 @@ def _start_span(name, span_type, attributes):
 
 
 def start_agent_span(name, attributes=None):
-    """Start a span with only explicitly supplied, non-sensitive attributes."""
+    """Start an agent span with only explicitly supplied non-sensitive metadata."""
     return _start_span(name, SpanType.AGENT, attributes)
 
 
 def start_retriever_span(name, attributes=None):
-    """Start a retrieval span without capturing SQL or contract evidence."""
+    """Start a retriever span without capturing SQL or contract evidence."""
     return _start_span(name, SpanType.RETRIEVER, attributes)

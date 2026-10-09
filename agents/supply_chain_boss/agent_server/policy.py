@@ -1,4 +1,8 @@
-"""Deterministic vendor policy lookup using the configured SQL warehouse."""
+"""Deterministic vendor policy lookup through the configured SQL warehouse.
+
+The vendor identifier is validated and sent as a bound SQL parameter; the
+result must identify exactly one vendor before approval policy is applied.
+"""
 
 import asyncio
 import re
@@ -12,15 +16,19 @@ from agent_server.models import VendorPolicy
 
 
 class VendorPolicyLookup:
+    """Resolve a vendor's support tier and derive its approval requirement."""
+
     def __init__(
         self,
         settings: Settings,
         workspace_client: WorkspaceClient,
     ) -> None:
+        """Retain the immutable policy settings and authenticated workspace client."""
         self._settings = settings
         self._workspace_client = workspace_client
 
     async def lookup(self, vendor_id: str) -> VendorPolicy:
+        """Validate the identifier, then run the synchronous SDK call off-loop."""
         if not self._settings.sql_warehouse_id:
             raise RuntimeError("DATABRICKS_SQL_WAREHOUSE_ID is not configured.")
         if not re.fullmatch(r"[A-Za-z0-9_-]{1,80}", vendor_id):
@@ -28,6 +36,7 @@ class VendorPolicyLookup:
         return await asyncio.to_thread(self._lookup_sync, vendor_id)
 
     def _lookup_sync(self, vendor_id: str) -> VendorPolicy:
+        """Execute, poll, and validate one parameterized SQL statement."""
         response = self._workspace_client.statement_execution.execute_statement(
             statement=(
                 "SELECT vendor_id, vendor_name, support_tier "
@@ -45,11 +54,14 @@ class VendorPolicyLookup:
         )
 
         def statement_state(result: object) -> str:
+            """Normalize SDK enum/string state values for polling comparisons."""
             status = getattr(result, "status", None)
             value = getattr(status, "state", None)
             return getattr(value, "value", str(value).rsplit(".", 1)[-1])
 
         deadline = time.monotonic() + 90
+        # The SQL SDK call is synchronous; bound polling so a stuck query cannot
+        # hold the action workflow indefinitely.
         while statement_state(response) in {"PENDING", "RUNNING"}:
             if time.monotonic() >= deadline:
                 raise TimeoutError("Vendor policy lookup exceeded its 90-second limit.")

@@ -1,1 +1,1 @@
-"""Vector-search-only agent-supply-chain-contract-ka."""
+"""Contract Specialist App package for read-only governed AI Search retrieval."""

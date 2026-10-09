@@ -1,4 +1,10 @@
-"""MLflow Responses API adapter for the LangGraph Boss Agent."""
+"""Bridge MLflow's Responses API to the long-lived LangGraph Boss runtime.
+
+MLflow autologging is enabled before importing the graph module so graph work
+is traced. Request metadata is taken only from Databricks App ingress headers;
+the forwarded user token is passed separately and is never serialized into
+workflow state.
+"""
 
 import logging
 import re
@@ -24,11 +30,13 @@ _runtime: BossRuntime | None = None
 
 
 def set_runtime(runtime: BossRuntime) -> None:
+    """Install the startup-created runtime for request handlers."""
     global _runtime
     _runtime = runtime
 
 
 async def close_runtime() -> None:
+    """Close pooled runtime resources during graceful App shutdown."""
     global _runtime
     if _runtime is None:
         return
@@ -37,12 +45,14 @@ async def close_runtime() -> None:
 
 
 def get_runtime() -> BossRuntime:
+    """Return the initialized runtime or fail explicitly before startup."""
     if _runtime is None:
         raise RuntimeError("Boss Agent runtime has not been initialized.")
     return _runtime
 
 
 def _latest_user_message(request: ResponsesAgentRequest) -> str:
+    """Extract the latest textual user turn from Responses API input items."""
     for item in reversed(request.input):
         item_dict = item.model_dump(exclude_none=True)
         if item_dict.get("role") != "user":
@@ -60,6 +70,7 @@ def _latest_user_message(request: ResponsesAgentRequest) -> str:
 
 
 def _conversation_id(request: ResponsesAgentRequest) -> str:
+    """Prefer the platform conversation ID and generate one for API callers."""
     if request.context and request.context.conversation_id:
         return str(request.context.conversation_id)
     custom_inputs = dict(request.custom_inputs or {})
@@ -67,6 +78,11 @@ def _conversation_id(request: ResponsesAgentRequest) -> str:
 
 
 def _trusted_identity(headers: dict[str, Any]) -> tuple[str | None, str | None]:
+    """Normalize ingress identity headers for per-user conversation partitioning.
+
+    Email-shaped validation avoids treating arbitrary forwarded header values
+    as identity. These headers are trusted only behind Databricks App ingress.
+    """
     normalized = {key.casefold(): str(value) for key, value in headers.items()}
     # These values are trusted only when supplied by the Databricks App ingress.
     email = normalized.get("x-forwarded-email", "").strip() or None
@@ -81,12 +97,18 @@ def _trusted_identity(headers: dict[str, Any]) -> tuple[str | None, str | None]:
 
 
 def _user_access_token(headers: dict[str, Any]) -> str | None:
+    """Read the user token for request-scoped calls without persisting it."""
     normalized = {key.casefold(): str(value) for key, value in headers.items()}
     # Never add this token to LangGraph state, checkpoints, or logs.
     return normalized.get("x-forwarded-access-token") or None
 
 
 def _app_base_url(headers: dict[str, Any]) -> str | None:
+    """Build an HTTPS App origin from ingress headers for approval deep links.
+
+    Reject URL-shaped hosts and non-HTTPS schemes so caller-controlled values
+    cannot turn a Jira description into a link to an arbitrary origin.
+    """
     normalized = {key.casefold(): str(value) for key, value in headers.items()}
     host = normalized.get("x-forwarded-host") or normalized.get("host")
     protocol = normalized.get("x-forwarded-proto", "https")
@@ -108,6 +130,7 @@ def _app_base_url(headers: dict[str, Any]) -> str | None:
 
 @invoke()
 async def invoke_handler(request: ResponsesAgentRequest) -> ResponsesAgentResponse:
+    """Run one Boss turn and serialize text plus structured action metadata."""
     runtime = get_runtime()
     headers = dict(get_request_headers())
     _, user_id = _trusted_identity(headers)
@@ -137,4 +160,5 @@ async def invoke_handler(request: ResponsesAgentRequest) -> ResponsesAgentRespon
 
 
 async def initialize(settings: Settings | None = None) -> None:
+    """Create and install the graph runtime once during App startup."""
     set_runtime(await create_runtime_async(settings or get_settings()))

@@ -94,6 +94,38 @@ of support tiers that require manager approval; it defaults to `Gold,Platinum`.
 The App fails closed when required approval has not been recorded. No vendor
 email field or recipient is needed for Jira item creation.
 
+## Runtime code map
+
+- `agent_server/start_server.py` hosts the custom chat and approval endpoints,
+  reuses MLflow's Responses endpoints, restores sampled incoming trace context,
+  and opens/closes the runtime at App startup and shutdown.
+- `agent_server/agent.py` adapts MLflow `ResponsesAgentRequest` objects to the
+  workflow. Trusted App-ingress identity and HTTPS origin headers are separated
+  from the user token; tokens are not serialized into LangGraph state.
+- `agent_server/workflow.py` defines the LangGraph `StateGraph` and its
+  checkpointed human-in-the-loop pauses. The ordered action path is
+  Specialist answer → strict evidence checks → SQL warehouse policy lookup →
+  user confirmation → optional manager approval → internal Jira tracking item.
+  Informational questions bypass the action-specific path.
+- `agent_server/specialist.py` calls the read-only Specialist Responses API and
+  validates extracted penalty facts and verbatim quotes before a proposal can
+  be created.
+- `agent_server/policy.py` uses a bound SQL parameter with Databricks Statement
+  Execution to resolve exactly one vendor and derive the configured tier rule.
+- `agent_server/jira.py` narrows the Atlassian MCP Service to schema-checked
+  issue/comment operations and resolves configured assignees to one Jira
+  account before creating work.
+- `agent_server/models.py` contains strict Pydantic boundary models;
+  `config.py` centralizes immutable environment settings; `auth.py` holds the
+  user token only in request-local async context.
+
+LangGraph `interrupt`/`Command(resume=...)` allows confirmation and approval to
+survive across HTTP requests using Lakebase checkpoints. `MemorySaver` is only
+for local development. MLflow LangChain autologging and propagated trace context
+support cross-App traces; this does not change the Specialist call to end-user
+OBO. The UI is deliberately a thin client: its action status and Jira links
+come from API output, not from interpreting model-generated prose.
+
 ## Security and operational follow-ups
 
 - Forward the original user's OAuth token to the child Responses API only after

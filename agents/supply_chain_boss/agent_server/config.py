@@ -1,4 +1,8 @@
-"""Runtime configuration for the supply-chain Boss App."""
+"""Parse environment-backed runtime settings for the supply-chain Boss App.
+
+Configuration is immutable after startup so approval policy and downstream
+resource targets cannot drift during a conversation.
+"""
 
 from dataclasses import dataclass
 import os
@@ -6,6 +10,8 @@ import os
 
 @dataclass(frozen=True)
 class Settings:
+    """Validated-at-use configuration shared by the Boss runtime components."""
+
     specialist_app_name: str
     model_endpoint: str
     approval_required_support_tiers: frozenset[str]
@@ -22,10 +28,12 @@ class Settings:
     checkpoint_backend: str
 
     def requires_manager_approval(self, support_tier: str) -> bool:
+        """Match support tiers case-insensitively against the configured policy."""
         return support_tier.strip().casefold() in self.approval_required_support_tiers
 
 
 def _parse_approval_required_support_tiers(value: str) -> frozenset[str]:
+    """Normalize a comma-separated tier list and reject ambiguous empty entries."""
     tiers = [tier.strip().casefold() for tier in value.split(",")]
     if not tiers or any(not tier for tier in tiers):
         raise ValueError(
@@ -36,6 +44,7 @@ def _parse_approval_required_support_tiers(value: str) -> frozenset[str]:
 
 
 def get_settings() -> Settings:
+    """Build the startup settings from environment variables and safe defaults."""
     return Settings(
         specialist_app_name=os.getenv("SPECIALIST_APP_NAME", ""),
         model_endpoint=os.getenv(

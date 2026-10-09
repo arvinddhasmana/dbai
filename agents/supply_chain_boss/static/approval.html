@@ -1,3 +1,8 @@
+<!--
+  Minimal manager-decision page for a paused Boss graph thread. It loads the
+  linked Jira request from the API, then submits one explicit approve/reject
+  value; authorization is currently any authenticated App user (see the MVP note).
+-->
 <!doctype html>
 <html lang="en">
   <head>
@@ -26,6 +31,7 @@
       const threadId = location.pathname.split("/").filter(Boolean).at(-1);
       const status = document.getElementById("status");
       const jiraIssue = document.getElementById("jira-issue");
+      // Fetch the Jira reference from checkpoint-backed state, not from URL data.
       const issueLink = async () => {
         try {
           const response = await fetch(`/api/approvals/${encodeURIComponent(threadId)}`, {
@@ -44,6 +50,7 @@
         }
       };
       issueLink();
+      // Lock both choices during submission to prevent duplicate decisions.
       document.querySelectorAll("button[data-decision]").forEach((button) => {
         button.addEventListener("click", async () => {
           document.querySelectorAll("button").forEach((item) => { item.disabled = true; });

@@ -1,8 +1,13 @@
-"""Conversation history normalization for OpenAI Agents SDK requests."""
+"""Normalize replayed Responses API history for the OpenAI Agents SDK.
+
+MLflow may replay assistant outputs with response-specific IDs and content
+blocks. The Runner accepts a simpler role/content history, so only compatible
+assistant messages are normalized and all other items are preserved unchanged.
+"""
 
 
 def normalize_history_items(messages: list[dict]) -> list[dict]:
-    """Normalize replayed assistant messages before passing them to Runner."""
+    """Convert replayed assistant response messages to Runner role/content items."""
     normalized: list[dict] = []
     for message in messages:
         if message.get("type") != "message" or message.get("role") != "assistant":

@@ -1,4 +1,10 @@
-"""Responses API client for the existing read-only specialist App."""
+"""Call the read-only Specialist App and extract action-ready contract evidence.
+
+The answer call preserves MLflow trace context but currently authenticates as
+the Boss App service principal; this is intentionally not described as user OBO.
+Penalty facts are parsed through a strict schema and quotes must occur verbatim
+in the Specialist answer before the workflow can propose an external action.
+"""
 
 import asyncio
 import json
@@ -55,6 +61,7 @@ PENALTY_EXTRACTION_SCHEMA = {
 
 
 def _response_text(payload: dict[str, Any]) -> str:
+    """Join text blocks from Responses API message items, ignoring other outputs."""
     output: list[str] = []
     for item in payload.get("output", []):
         if not isinstance(item, dict) or item.get("type") != "message":
@@ -70,17 +77,21 @@ def _response_text(payload: dict[str, Any]) -> str:
 
 
 class SpecialistClient:
+    """Invoke the deployed contract Specialist over its MLflow Responses endpoint."""
+
     def __init__(
         self,
         settings: Settings,
         workspace_client: WorkspaceClient,
         http_client: httpx.AsyncClient | None = None,
     ) -> None:
+        """Store shared clients; an injected HTTP client enables isolated tests."""
         self._settings = settings
         self._workspace_client = workspace_client
         self._http_client = http_client
 
     async def ask(self, question: str, conversation_id: str) -> SpecialistResult:
+        """Resolve the App URL, propagate trace context, and validate its response."""
         if not self._settings.specialist_app_name:
             raise RuntimeError("SPECIALIST_APP_NAME is not configured.")
 
@@ -144,12 +155,15 @@ class SpecialistClient:
 
 
 class PenaltyEvidenceExtractor:
+    """Turn Specialist output into strictly validated facts for the action graph."""
+
     def __init__(
         self,
         settings: Settings,
         workspace_client: WorkspaceClient,
         client: Any | None = None,
     ) -> None:
+        """Use the workspace model client unless a deterministic test client is given."""
         self._settings = settings
         self._client = client or AsyncDatabricksOpenAI(
             workspace_client=workspace_client
@@ -158,6 +172,11 @@ class PenaltyEvidenceExtractor:
     async def extract(
         self, question: str, specialist: SpecialistResult
     ) -> PenaltyEvidence:
+        """Prefer structured Specialist evidence; otherwise use schema-constrained extraction.
+
+        The model is an extractor, not an authority: the resulting quotes are
+        checked against the actual Specialist answer before any action can proceed.
+        """
         existing = specialist.custom_outputs.get("penalty_evidence")
         if isinstance(existing, dict):
             evidence = PenaltyEvidence.model_validate(existing)
@@ -210,6 +229,7 @@ class PenaltyEvidenceExtractor:
 
     @staticmethod
     def _validate_quotes(evidence: PenaltyEvidence, answer: str) -> None:
+        """Require each relied-on quote to be present verbatim in the Specialist text."""
         if evidence.penalty_applicable is not True:
             return
         required_quotes = [evidence.contract_basis, evidence.amount_quote]

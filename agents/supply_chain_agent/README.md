@@ -19,3 +19,34 @@ The agent supports multi-turn requests: the UI sends conversation history, the r
 Unity Gateway routing is supported but safe-off by default until the Gateway model service exists. Create or authorize a Unity Gateway model service named `agent-supply-chain-contract-ka-model`, then set `USE_AI_GATEWAY=true` and change `AI_GATEWAY_ENDPOINT` in the Databricks App configuration. These environment values can also be changed through the Bundle variables in `resources/agent.resources.yml`; no Python change is required to switch models or Gateway destinations.
 
 The SQL warehouse is an App resource binding exposed through `valueFrom: sql-warehouse`. The local deployment script uses Bundle sync plus App deployment because the current CLI rejects the existing App's Bundle update mask; the resource binding remains declared in the Bundle for reconciliation.
+
+## Runtime code map
+
+- `src/agent_server/agent.py` configures the OpenAI Agents SDK with the
+  Databricks OpenAI client, then exposes MLflow `invoke` and `stream` handlers.
+  Each turn retrieves evidence first and supplies that result to answer
+  generation; the UI-facing output also includes `custom_outputs.contract_evidence`.
+- `src/agent_server/data_tools.py` calls the single governed
+  `globalmart.supply_chain.search_vendor_contracts` SQL function. The function
+  is backed by managed AI Search, and the call uses the forwarded user's
+  workspace identity when available. It is not a general SQL or inventory tool.
+- `src/agent_server/history.py` converts replayed assistant response items into
+  the role/content history accepted by the Agents SDK without discarding other
+  request items.
+- `src/agent_server/utils.py` resolves session IDs, adapts Agents SDK stream
+  events to MLflow Responses events, and creates an on-behalf-of workspace
+  client from the App's forwarded access token.
+- `src/agent_server/observability.py` configures MLflow experiments and Unity
+  Catalog trace tables. Spans contain deliberately redacted metadata rather
+  than SQL, prompts, or contract text.
+- `src/agent_server/start_server.py` serves the custom UI and health route with
+  MLflow's chat proxy disabled. `static/index.html` consumes Responses output
+  and SSE deltas, then opens citation panels only from evidence rows returned
+  with that response.
+
+The model endpoint is called through Chat Completions after deterministic
+retrieval because the configured endpoint does not reliably support a Responses
+API tool loop. MLflow's Responses AgentServer remains the external API
+transport. This division keeps retrieval authorization and source selection
+explicit, while the model's role is limited to concise synthesis of retrieved
+evidence.

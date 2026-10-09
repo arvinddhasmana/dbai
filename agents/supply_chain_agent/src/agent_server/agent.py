@@ -1,4 +1,11 @@
-"""GlobalMart vector-search contract agent and MLflow handlers."""
+"""Configure the contract Specialist and expose Responses API handlers.
+
+Retrieval is deterministic and runs before answer generation: every substantive
+answer receives the governed search result as context. The model uses Chat
+Completions because the selected Databricks endpoint does not reliably support
+Responses API tool passthrough; MLflow still provides the external Responses
+transport and streaming protocol.
+"""
 
 import asyncio
 import json
@@ -31,6 +38,7 @@ AI_GATEWAY_ENDPOINT = os.getenv(
 
 
 def _model_endpoint():
+    """Select direct model serving or opt-in Unity Gateway routing."""
     return AI_GATEWAY_ENDPOINT if USE_AI_GATEWAY else DIRECT_MODEL_ENDPOINT
 
 
@@ -59,6 +67,7 @@ source. Keep answers concise and do not mention internal orchestration.
 
 
 def create_answer_agent():
+    """Create a stateless answer agent that can use only supplied evidence."""
     return Agent(
         name=f"{AGENT_NAME}-answer",
         instructions=(
@@ -74,6 +83,7 @@ def create_answer_agent():
 
 
 def _prepare_runner_input(items):
+    """Convert Pydantic/dict inputs to SDK history and normalize replayed turns."""
     prepared = []
     for item in items:
         if hasattr(item, "model_dump"):
@@ -86,6 +96,7 @@ def _prepare_runner_input(items):
 
 
 def _response(text, search_result):
+    """Build the MLflow Responses payload and expose retrieved citations separately."""
     evidence = _parse_evidence(search_result)
     return ResponsesAgentResponse(
         output=[
@@ -101,6 +112,7 @@ def _response(text, search_result):
 
 
 def _parse_evidence(search_result):
+    """Decode retrieval output while preserving an explicit invalid-result signal."""
     try:
         return json.loads(search_result)
     except json.JSONDecodeError:
@@ -112,6 +124,7 @@ def _parse_evidence(search_result):
 
 
 def _latest_user_text(items):
+    """Find the latest user text across the supported Responses content formats."""
     for item in reversed(items):
         if isinstance(item, dict) and item.get("role") == "user":
             content = item.get("content", "")
@@ -127,6 +140,7 @@ def _latest_user_text(items):
 
 
 def _search_parameters(question, context=""):
+    """Derive a stable vendor filter from the recent user-turn context."""
     vendor_matches = re.findall(
         r"\bVEND[-_]?\d+\b",
         f"{question}\n{context}",
@@ -137,6 +151,7 @@ def _search_parameters(question, context=""):
 
 
 def _conversation_messages(items):
+    """Keep only text-like user and assistant turns for answer generation."""
     return [
         {"role": item["role"], "content": item["content"]}
         for item in items
@@ -147,6 +162,7 @@ def _conversation_messages(items):
 
 
 def _search_context(items):
+    """Combine a small recent window of user turns to resolve follow-up questions."""
     user_messages = [
         item["content"]
         for item in items
@@ -158,11 +174,13 @@ def _search_context(items):
 
 
 def _update_trace_session(request):
+    """Attach the request's session identifier to the active MLflow trace."""
     if session_id := get_session_id(request):
         mlflow.update_current_trace(metadata={"mlflow.trace.session": session_id})
 
 
 async def _run_answer(question, search_result, history):
+    """Run answer generation with current evidence ahead of conversational context."""
     answer_input = [
         {
             "role": "system",
@@ -178,6 +196,7 @@ async def _run_answer(question, search_result, history):
 
 
 def _stream_event_with_evidence(event, evidence):
+    """Attach the same evidence custom output to the terminal streaming event."""
     if isinstance(event, dict) and event.get("type") == "response.completed":
         response = event.get("response")
         if isinstance(response, dict):
@@ -187,6 +206,7 @@ def _stream_event_with_evidence(event, evidence):
 
 @invoke()
 async def invoke_handler(request: ResponsesAgentRequest) -> ResponsesAgentResponse:
+    """Retrieve once, answer once, and return a non-streaming Responses object."""
     _update_trace_session(request)
     prepared_input = _prepare_runner_input(request.input)
     question = _latest_user_text(prepared_input)
@@ -222,6 +242,7 @@ async def invoke_handler(request: ResponsesAgentRequest) -> ResponsesAgentRespon
 async def stream_handler(
     request: ResponsesAgentRequest,
 ) -> AsyncGenerator[ResponsesAgentStreamEvent | dict, None]:
+    """Stream model output while preserving citations on the completed response."""
     _update_trace_session(request)
     prepared_input = _prepare_runner_input(request.input)
     question = _latest_user_text(prepared_input)

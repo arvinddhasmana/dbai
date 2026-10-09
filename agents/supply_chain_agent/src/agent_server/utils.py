@@ -1,4 +1,9 @@
-"""Authentication, session, and streaming helpers for Databricks Apps."""
+"""Adapt Databricks request identity and SDK events to the App's API contracts.
+
+The forwarded access token creates a request-scoped workspace client for
+Unity-Catalog-governed access. Streaming event IDs are normalized because the
+Responses protocol expects a stable item ID across related delta events.
+"""
 
 from collections.abc import AsyncGenerator, AsyncIterator
 from uuid import uuid4
@@ -10,6 +15,7 @@ from mlflow.types.responses import ResponsesAgentRequest, ResponsesAgentStreamEv
 
 
 def get_session_id(request: ResponsesAgentRequest) -> str | None:
+    """Resolve the conversation ID from standard context or custom inputs."""
     if request.context and request.context.conversation_id:
         return request.context.conversation_id
     if request.custom_inputs and isinstance(request.custom_inputs, dict):
@@ -21,7 +27,7 @@ def get_session_id(request: ResponsesAgentRequest) -> str | None:
 async def process_agent_stream_events(
     async_stream: AsyncIterator[StreamEvent],
 ) -> AsyncGenerator[ResponsesAgentStreamEvent | dict, None]:
-    """Convert OpenAI Agents events to MLflow Responses stream events."""
+    """Translate Runner events into MLflow-compatible Responses stream events."""
     current_item_id = str(uuid4())
     async for event in async_stream:
         if event.type == "raw_response_event":
@@ -42,7 +48,11 @@ async def process_agent_stream_events(
 
 
 def get_user_workspace_client():
-    """Return an on-behalf-of client when the request carries a user token."""
+    """Use user OBO credentials when forwarded, otherwise use App authentication.
+
+    OBO preserves each caller's Unity Catalog access policy for retrieval; local
+    development can still use the SDK's configured default authentication.
+    """
     try:
         token = get_request_headers().get("x-forwarded-access-token")
     except Exception:

@@ -1,4 +1,10 @@
-"""LangGraph workflow and resumable approval handling."""
+"""Build and drive the Boss App's checkpointed LangGraph action workflow.
+
+The graph deliberately separates answer generation, evidence validation,
+governed vendor-policy lookup, user confirmation, and manager approval. Jira
+creates internal work items only; no graph node contacts or charges a vendor.
+LangGraph interrupts plus a durable checkpointer pause safely across requests.
+"""
 
 from __future__ import annotations
 
@@ -28,6 +34,12 @@ from agent_server.specialist import PenaltyEvidenceExtractor, SpecialistClient
 
 
 class BossState(TypedDict, total=False):
+    """Serializable conversation state persisted by LangGraph checkpoints.
+
+    Credentials are intentionally excluded; the user's token is carried in a
+    request-local ``ContextVar`` only while an external tool call is running.
+    """
+
     question: str
     app_base_url: str | None
     thread_id: str
@@ -43,6 +55,8 @@ class BossState(TypedDict, total=False):
 
 
 class BossRuntime:
+    """Own the compiled graph and resources whose lifetime matches the App."""
+
     def __init__(
         self,
         graph: Any,
@@ -53,6 +67,7 @@ class BossRuntime:
         jira_client: JiraMcpClient,
         resource_stack: AsyncExitStack | None = None,
     ) -> None:
+        """Keep the graph dependencies together for request handlers and shutdown."""
         self.graph = graph
         self.settings = settings
         self.specialist = specialist
@@ -62,12 +77,14 @@ class BossRuntime:
         self._resource_stack = resource_stack
 
     async def aclose(self) -> None:
+        """Close the async resource stack once, including Lakebase connections."""
         resource_stack, self._resource_stack = self._resource_stack, None
         if resource_stack is not None:
             await resource_stack.aclose()
 
 
 def _action_request(question: str) -> bool:
+    """Detect explicit penalty-action phrasing before entering the action branch."""
     return bool(
         re.search(
             r"\b(apply|assess|charge|create|deduct|impose|issue|levy|send|notify)\b.{0,80}"
@@ -81,6 +98,7 @@ def _action_request(question: str) -> bool:
 
 
 def _proposal_summary(proposal: PenaltyProposal) -> str:
+    """Render the exact decision fields shown to the confirming user or approver."""
     return (
         f"Vendor: {proposal.vendor_name} ({proposal.vendor_id})\n"
         f"Penalty: {proposal.currency} {proposal.amount}\n"
@@ -91,6 +109,7 @@ def _proposal_summary(proposal: PenaltyProposal) -> str:
 
 
 def _jira_issue_result(issue: JiraIssue, kind: str, status: str) -> dict[str, str]:
+    """Convert a Jira model into the small result shape returned by the App."""
     return {
         "kind": kind,
         "key": issue.key,
@@ -107,7 +126,14 @@ def build_graph(
     jira_client: JiraMcpClient,
     checkpointer: Any,
 ) -> Any:
+    """Compose the analysis, evidence, policy, and human-approval graph.
+
+    Conditional edges keep informational questions read-only. Action requests
+    cannot reach Jira creation until extracted evidence passes strict checks,
+    the user confirms the proposal, and (for configured tiers) a manager approves.
+    """
     async def analyze(state: BossState) -> BossState:
+        """Ask the Specialist for an answer and retain its structured output."""
         result = await specialist.ask(state["question"], state["thread_id"])
         return {
             "specialist": result.model_dump(mode="json"),
@@ -116,6 +142,7 @@ def build_graph(
         }
 
     async def extract_evidence(state: BossState) -> BossState:
+        """Extract structured penalty facts and stop on any unverifiable gap."""
         result = SpecialistResult.model_validate(state["specialist"])
         evidence = await extractor.extract(state["question"], result)
         if evidence.penalty_applicable is False:
@@ -157,6 +184,7 @@ def build_graph(
         }
 
     async def lookup_policy(state: BossState) -> BossState:
+        """Join Specialist evidence to authoritative support-tier policy."""
         evidence = PenaltyEvidence.model_validate(state["evidence"])
         if not evidence.vendor_id or not evidence.amount or not evidence.currency:
             return {
@@ -183,6 +211,7 @@ def build_graph(
         }
 
     async def await_user_confirmation(state: BossState) -> BossState:
+        """Pause the graph until the user explicitly accepts or declines."""
         proposal = PenaltyProposal.model_validate(state["proposal"])
         decision = interrupt(
             {
@@ -207,6 +236,7 @@ def build_graph(
         return {"status": "user_confirmed"}
 
     async def create_approval_item(state: BossState) -> BossState:
+        """Create the approver's Jira request and persist its trusted App link."""
         proposal = PenaltyProposal.model_validate(state["proposal"])
         base_url = (state.get("app_base_url") or "").rstrip("/")
         if not base_url:
@@ -251,6 +281,7 @@ def build_graph(
         }
 
     async def await_manager_decision(state: BossState) -> BossState:
+        """Pause for a matching manager decision and record it on the Jira request."""
         pending = state.get("pending_approval") or {}
         decision = interrupt(
             {
@@ -307,6 +338,7 @@ def build_graph(
         }
 
     async def create_penalty_item(state: BossState) -> BossState:
+        """Create internal penalty-tracking work only after required approvals."""
         proposal = PenaltyProposal.model_validate(state["proposal"])
         if proposal.approval_required and state.get("approval_decision") is not True:
             raise RuntimeError(
@@ -348,12 +380,15 @@ def build_graph(
         }
 
     def after_analysis(state: BossState) -> str:
+        """Skip all action-specific extraction for ordinary information requests."""
         return "extract" if _action_request(state["question"]) else "finish"
 
     def after_extraction(state: BossState) -> str:
+        """Continue only when the evidence node marked every required fact ready."""
         return "lookup" if state.get("status") == "evidence_ready" else "finish"
 
     def after_policy(state: BossState) -> str:
+        """Route a complete proposal to user confirmation; otherwise finish safely."""
         return (
             "confirm"
             if state.get("status") == "awaiting_user_confirmation"
@@ -361,14 +396,17 @@ def build_graph(
         )
 
     def after_confirmation(state: BossState) -> str:
+        """Require user confirmation before branching to approval or issue creation."""
         if state.get("status") != "user_confirmed":
             return "finish"
         proposal = PenaltyProposal.model_validate(state["proposal"])
         return "manager" if proposal.approval_required else "penalty"
 
     def after_manager_decision(state: BossState) -> str:
+        """Create the tracking item only for an affirmative manager decision."""
         return "penalty" if state.get("approval_decision") is True else "finish"
 
+    # Edges make every human decision an explicit, resumable graph boundary.
     builder = StateGraph(BossState)
     builder.add_node("analyze", analyze)
     builder.add_node("extract_evidence", extract_evidence)
@@ -413,6 +451,11 @@ def build_graph(
 
 
 async def create_runtime_async(settings: Settings) -> BossRuntime:
+    """Create shared SDK clients, choose the checkpoint backend, and compile graph.
+
+    Production uses the configured Lakebase branch or autoscaling endpoint.
+    MemorySaver is accepted only when explicitly selected for local development.
+    """
     from databricks.sdk import WorkspaceClient
     from databricks_langchain import AsyncCheckpointSaver
 
@@ -471,10 +514,12 @@ async def create_runtime_async(settings: Settings) -> BossRuntime:
 
 
 def _thread_config(thread_id: str) -> dict[str, Any]:
+    """Return the LangGraph config key used to resume a checkpointed thread."""
     return {"configurable": {"thread_id": thread_id}}
 
 
 async def pending_interrupt(graph: Any, thread_id: str) -> dict[str, Any] | None:
+    """Find the first JSON-shaped human interrupt currently awaiting a decision."""
     snapshot = await graph.aget_state(_thread_config(thread_id))
     for task in getattr(snapshot, "tasks", ()):
         for interruption in getattr(task, "interrupts", ()):
@@ -485,11 +530,13 @@ async def pending_interrupt(graph: Any, thread_id: str) -> dict[str, Any] | None
 
 
 def thread_id_for(identity: str | None, conversation_id: str) -> str:
+    """Hash identity and conversation ID to isolate checkpoint keys without PII."""
     scope = identity or "anonymous"
     return hashlib.sha256(f"{scope}:{conversation_id}".encode()).hexdigest()
 
 
 def _outcome(state: dict[str, Any], thread_id: str) -> dict[str, Any]:
+    """Translate LangGraph's state/interrupt representation into the API contract."""
     interruption = state.get("__interrupt__", ())
     prompt = None
     if interruption:
@@ -525,6 +572,7 @@ def _outcome(state: dict[str, Any], thread_id: str) -> dict[str, Any]:
 
 
 def _parse_confirmation(message: str) -> bool | None:
+    """Recognize a small explicit yes/no vocabulary; ambiguous replies stay pending."""
     normalized = message.strip().casefold().strip(" .!?")
     if normalized in {"yes", "y", "confirm", "i confirm", "approve", "approved"}:
         return True
@@ -541,6 +589,11 @@ async def handle_message(
     app_base_url: str | None,
     user_access_token: str | None = None,
 ) -> dict[str, Any]:
+    """Start a turn or resume its user-confirmation interrupt.
+
+    Manager decisions are deliberately accepted only through the approval route;
+    a chat reply cannot impersonate that second approval step.
+    """
     thread_id = thread_id_for(user_id, conversation_id)
     config = _thread_config(thread_id)
     current_interrupt = await pending_interrupt(runtime.graph, thread_id)
@@ -576,7 +629,7 @@ async def handle_message(
             )
         return _outcome(state, thread_id)
 
-    # A finished turn is reset before reuse of its persistent conversation thread.
+    # Reinitialize turn fields while retaining the checkpointer's thread identity.
     initial_state: BossState = {
         "question": message,
         "app_base_url": app_base_url,
@@ -599,6 +652,7 @@ async def handle_message(
 async def manager_approval_details(
     runtime: BossRuntime, thread_id: str
 ) -> dict[str, Any]:
+    """Return details only for an active approval interrupt matching this thread."""
     config = _thread_config(thread_id)
     current_interrupt = await pending_interrupt(runtime.graph, thread_id)
     snapshot = await runtime.graph.aget_state(config)
@@ -626,6 +680,7 @@ async def decide_manager_approval(
     approved: bool,
     user_access_token: str | None = None,
 ) -> dict[str, Any]:
+    """Resume one matching manager interrupt with an explicit boolean decision."""
     config = _thread_config(thread_id)
     current_interrupt = await pending_interrupt(runtime.graph, thread_id)
     snapshot = await runtime.graph.aget_state(config)

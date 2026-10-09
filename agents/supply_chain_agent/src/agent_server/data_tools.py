@@ -1,4 +1,10 @@
-"""Vector-search tool used by the GlobalMart contract agent."""
+"""Retrieve contract evidence through the governed Unity Catalog SQL function.
+
+The App intentionally has one retrieval capability: the managed AI Search index
+is exposed through ``search_vendor_contracts`` and invoked with the signed-in
+user's workspace client. Query text is SQL-literal escaped because the function
+call is assembled as SQL; identifiers come only from App configuration.
+"""
 
 import json
 import logging
@@ -19,6 +25,7 @@ MAX_SEARCH_RESULTS = 10
 
 
 def _warehouse_id():
+    """Return the configured SQL warehouse ID or fail before issuing a query."""
     warehouse_id = os.getenv("DATABRICKS_SQL_WAREHOUSE_ID")
     if not warehouse_id:
         raise RuntimeError("DATABRICKS_SQL_WAREHOUSE_ID is not configured for this app.")
@@ -26,12 +33,18 @@ def _warehouse_id():
 
 
 def _sql_literal(value):
+    """Encode a nullable value as a SQL literal, escaping embedded apostrophes."""
     if value is None or not str(value).strip():
         return "NULL"
     return "'" + str(value).replace("'", "''") + "'"
 
 
 def _execute_sql(statement):
+    """Execute a SQL statement, poll to completion, and map rows by column name.
+
+    Databricks' statement-execution SDK is synchronous, so callers run this
+    function in a worker thread rather than blocking the async agent loop.
+    """
     client = get_user_workspace_client()
     response = client.statement_execution.execute_statement(
         statement,
@@ -40,6 +53,7 @@ def _execute_sql(statement):
     )
 
     def state(result):
+        """Normalize the SDK's enum/string state for the completion loop."""
         value = result.status.state
         return getattr(value, "value", str(value).rsplit(".", 1)[-1])
 
@@ -66,6 +80,7 @@ def _execute_sql(statement):
 
 
 def _search_vendor_contract_rows(search_text, vendor_id=None, support_tier=None, region=None):
+    """Call the governed search function and return its ranked evidence rows."""
     statement = f"""
 SELECT
   source_file,
@@ -89,6 +104,11 @@ LIMIT {MAX_SEARCH_RESULTS}
 
 
 def _search_vendor_contracts(search_text, vendor_id=None, support_tier=None, region=None):
+    """Expose retrieval as a bounded tool with redacted tracing and explicit errors.
+
+    Empty queries are non-retryable input errors. Operational failures return a
+    stable error shape instead of pretending that no matching evidence exists.
+    """
     if not isinstance(search_text, str) or not search_text.strip():
         return json.dumps({
             "ok": False,
